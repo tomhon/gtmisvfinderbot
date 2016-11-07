@@ -4,12 +4,14 @@
   "description": "",
   "main": "app.js",
   "dependencies": {
+    "applicationinsights": "^0.16.0",
     "body-parser": "^1.15.2",
     "botbuilder": "^3.4.4",
     "express": "^4.14.0",
     "memory-cache": "^0.1.6",
-    "tedious": "^1.14.0",
-    "restify": "^4.2.0"
+    "odata": "^0.3.0",
+    "restify": "^4.2.0",
+    "tedious": "^1.14.0"
   },
   "devDependencies": {},
   "scripts": {
