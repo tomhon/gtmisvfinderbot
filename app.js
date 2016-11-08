@@ -50,7 +50,7 @@ var arrayErr = new Array();
 
 
 
-// set up SQL server connection using Application Environment Variables
+// set up K9 SQL server connection using Application Environment Variables
 
 var k9config = {
     userName: process.env.SQLuserName,
@@ -132,97 +132,79 @@ k9connection.on('connect', function(err) {
 
 //Configure Odata Source 
 
-//basic config 
-o().config({
-  endpoint: process.env.odataEndpoint,   // your odata endpoint for the service 
-//   endpoint: 'http://services.odata.org/V4/OData/OData.svc',   // your odata endpoint for the service 
-  json: false,       // currently only json is supported 
-  version: 1,       // oData version (currently supported version 4\. However most also work with version 3.) 
-  strictMode: false, // strict mode throws exceptions, non strict mode only logs them 
-  start: null,      // a function which is executed on loading 
-  ready: null,      // a function which is executed on ready 
-  error: null,      // a function which is executed on error 
-  headers: [],      // an array of additional headers e.g.: [{name:'headername',value:'headervalue'}] 
-  username: process.env.odataUsername,   // a basic auth username 
-  password: process.env.odataPassword,   // a basic auth password 
-  isAsync: true     // set this to false to make synced (a)jax calls. (doesn't work with basic auth!) 
-});
+
+//
+// Set up Connection to GTM SQL db
+//
+var GTMconfig = {
+    userName: process.env.GTMSQLuserName,
+    password: process.env.GTMSQLpassword,
+    server: process.env.GTMSQLserver,
+    // If you are on Microsoft Azure, you need this:
+    options: {encrypt: true, database: process.env.GTMSQLdatabase}
+};
+
+var GTMconnection = new Connection(GTMconfig);
 
 
- //===============================================
- //Loads Application data into array Applications
- //===============================================
-
-function loadApplicationsArray () {
-    o('Applications').get(function(data) {
-        Applications = data;
-        console.log("Applications Data Loaded - array length: %s", Applications.length);
-    });
-}
-
-//===============================================
-// Load ApplicationCountry data
-//===============================================
-
-function loadApplicationCountriesArray () {
-    o('ApplicationCountries').get(function(data) {
-        ApplicationCountries = data;    
-        console.log("Application Countries Data Loaded - array length: %s", ApplicationCountries.length);
-    });
-}
-
-//===============================================
-// Load ApplicationIndustries data
-//===============================================
-
-function loadApplicationIndustriesArray () {
-    o('ApplicationIndustries').get(function(data) {
-        ApplicationIndustries = data;
-        console.log("Application Industries Data Loaded - array length: %s", ApplicationIndustries.length);
-    });
-}
-
-//===============================================
-// Load ApplicationIndustries data
-//===============================================
-
-function loadApplicationContactsArray() {
-    o('ApplicationContacts').get(function(data) {
-        ApplicationContacts = data;
-        console.log("Application Contacts Data Loaded - array length: %s", ApplicationContacts.length);
-    });
-}
-
-//===============================================
-// Load ApplicationMaterials data
-//===============================================
-
-function loadApplicationMaterialsArray () {
-    o('ApplicationMaterials').get(function(data) {
-        ApplicationMaterials = data;
-        console.log("Application Materials Data Loaded - array length: %s", ApplicationMaterials.length);
-    });
-}
-
-//===============================================
-// Load data arrays from odata service
-//===============================================
-
-var Applications = new Array();
-loadApplicationsArray();
-
-var ApplicationCountries = new Array();
-loadApplicationCountriesArray();
-
-var ApplicationIndustries = new Array();
-loadApplicationIndustriesArray();
-
-var ApplicationContacts = new Array();
-loadApplicationContactsArray();
 
 
-var ApplicationMaterials = new Array();
-loadApplicationMaterialsArray();
+function testGTMConnection(session) {
+      
+        request = new Request("SELECT Application.ApplicationName, Application.ApplicationId from dbo.Application where (Application.CountryName = 'South Africa' AND Application.IsAzure = 'True')", function(err) {
+         if (err) {
+            console.log(err);
+
+          }
+        else {
+            console.log('GTM SQL request succeeded');
+
+          }
+        });
+
+    //unpack data from SQL query
+        request.on('row', function(columns) {
+            var result = new Array();
+            session.send('received data from SQL');
+            columns.forEach(function(column) {
+              if (column.value === null) {
+                // mappingArray.push('');
+              } else {
+                    switch(column.metadata.colName) {
+                        case "ApplicationName": 
+                            result.ApplicationName = column.value;
+                            break;
+                        case "ApplicationId":
+                            result.ApplicationId = column.value;
+                            break;
+                        }  
+
+                    var card = new builder.HeroCard(session)
+                        .title(result.ApplicationName)
+                        .subtitle(result.ApplicationId + ', '+ 'result.CountryName')
+                        .text('Platform: '+ 'result.PlatformName' + ' Industry: ' + 'result.ParentIndustryName' + ' Readiness: '+ 'result.Readiness')
+                        // .tap(builder.CardAction.openUrl(session, item.Url ))
+                    var msg = new builder.Message(session)
+                        .attachmentLayout(builder.AttachmentLayout.carousel)
+                        .attachments([card]);
+                    session.send(msg);
+                    console.log(card);
+
+
+
+                    }
+
+            });
+            // mappingArray.push(oIsv);
+            // console.log(oIsv);
+        }); 
+
+        GTMconnection.execSql(request);
+    };
+
+
+
+
 
 //===============================================
 // Create Readiness name to value map
@@ -275,7 +257,26 @@ bot.dialog('/firstRun', [
      } 
  ]); 
 
+bot.dialog('/testGTM', [ 
+    function (session) { 
 
+        session.send('In GTM Test')
+        GTMconnection.on('connect', function(err) {
+            // If no error, then good to proceed.
+            
+                if (err) {
+                //    console.log(err);
+                    arrayErr.push(err);
+                } else {
+                console.log("Connected to " + this.config.server + " " + this.config.options.database);
+
+                testGTMConnection(session);  
+
+                };               
+        });
+        session.endDialog('Exiting GTM test');
+     } 
+ ]); 
 
 
 bot.dialog('/menu', [
@@ -290,17 +291,18 @@ bot.dialog('/menu', [
 
                     .buttons([
                         builder.CardAction.imBack(session, "appSearchCriteria", "Applications"),
-                        builder.CardAction.imBack(session, "dxContacts", "DX Contacts")
+                        builder.CardAction.imBack(session, "dxContacts", "DX Contacts"),
+                        builder.CardAction.imBack(session, "testGTM", "Test GTM")
                         ]),
      
             ]);
-        // builder.Prompts.choice(session, msg, "appSearchCriteria|dxContacts",{maxRetries: 0});
+        // builder.Prompts.choice(session, msg, "appSearchCriteria|dxContacts|testGTM",{maxRetries: 0});
         builder.Prompts.text(session, msg,{maxRetries: 0});
 
 
     },
     function (session, results) {
-        if  (results.response && (results.response == 'appSearchCriteria' || results.response == 'dxContacts')) {
+        if  (results.response && (results.response == 'appSearchCriteria' || results.response == 'dxContacts' || results.response == 'testGTM')) {
             // Launch demo dialog
             verboseDebug('Spotted button press',session);
             session.beginDialog('/' + results.response);
