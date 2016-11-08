@@ -145,66 +145,97 @@ var GTMconfig = {
 };
 
 var GTMconnection = new Connection(GTMconfig);
+GTMconnection.on('connect', function(err) {
+    // If no error, then good to proceed.
+    
+        if (err) {
+        //    console.log(err);
+            arrayErr.push(err);
+        } else {
+        console.log("Connected to " + this.config.server + " " + this.config.options.database);
 
 
 
+        };               
+});
 
-function testGTMConnection(session) {
-      
-        request = new Request("SELECT Application.ApplicationName, Application.ApplicationId from dbo.Application where (Application.CountryName = 'South Africa' AND Application.IsAzure = 'True')", function(err) {
-         if (err) {
-            console.log(err);
+function isvCard() {
+    this.appId = 0;
+    this.isvName = "";
+    this.appName = "";
+    this.industry = "";
+    this.crossIndustry = "";
+    this.platform = "";
+    this.sellCountry = "";
+    this.originCountry = "";
+    this.readiness = "";
+    this.gtmContact = "";
+    this.pbeContact = "";
+    this.teContact = "";
+    this.url = "www.microsoft.com";
+}
 
-          }
-        else {
-            console.log('GTM SQL request succeeded');
+var queryString = "SELECT Application.ApplicationId, Application.ApplicationName, Application.AccountName, Application.IndustrialSectorName, Application.PlatformName from dbo.Application where (Application.CountryName = 'France' AND Application.IsWindows = 'True')"
 
-          }
-        });
+function GTMQuery(session, queryString) {
+    //set up SQL request  
+    request = new Request( queryString, function(err) {
+        if (err) {
+        verboseDebug(err);
+        }
+    else {
+        verboseDebug('GTM SQL request succeeded');
+        }
+    });
 
-    //unpack data from SQL query
-        request.on('row', function(columns) {
-            var result = new Array();
-            session.send('received data from SQL');
-            columns.forEach(function(column) {
-              if (column.value === null) {
-                // mappingArray.push('');
-              } else {
-                    switch(column.metadata.colName) {
-                        case "ApplicationName": 
-                            result.ApplicationName = column.value;
-                            break;
-                        case "ApplicationId":
-                            result.ApplicationId = column.value;
-                            break;
-                        }  
-
-                    var card = new builder.HeroCard(session)
-                        .title(result.ApplicationName)
-                        .subtitle(result.ApplicationId + ', '+ 'result.CountryName')
-                        .text('Platform: '+ 'result.PlatformName' + ' Industry: ' + 'result.ParentIndustryName' + ' Readiness: '+ 'result.Readiness')
-                        // .tap(builder.CardAction.openUrl(session, item.Url ))
-                    var msg = new builder.Message(session)
-                        .attachmentLayout(builder.AttachmentLayout.carousel)
-                        .attachments([card]);
-                    session.send(msg);
-                    console.log(card);
-
-
-
-                    }
-
+    //unpack data from SQL query as it's returned
+    request.on('row', function(columns) {
+        var msg = new builder.Message(session);
+        var card = new builder.HeroCard(session)
+        var result = new isvCard();
+        verboseDebug('received data from SQL');
+        columns.forEach(function(column) {
+            if (column.value === null) {
+            // no data returned in row
+            } else {
+                switch(column.metadata.colName) {
+                    case "ApplicationId":
+                        result.appId = column.value;
+                        verboseDebug(result.appId);
+                        break;
+                    case "ApplicationName": 
+                        result.appName = column.value;
+                        break;
+                    case "AccountName": 
+                        result.isvName = column.value;
+                        break;
+                    case "IndustrialSectorName":
+                        result.crossIndustry = column.value;
+                        break;
+                    case "IndustryName":
+                        result.industry = column.value;
+                        break;
+                    case "PlatformName":
+                        result.platform = column.value;
+                        break;
+                    }  
+                card
+                    .title(result.appName)
+                    .subtitle(result.isvName + ', '+ result.sellCountry)
+                    .text('Industry: ' + result.crossIndustry + ' Platform: '+ result.platform + ' Readiness: '+ result.readiness)
+                    .tap(builder.CardAction.openUrl(session, result.url ))
+                msg
+                    .attachmentLayout(builder.AttachmentLayout.carousel)
+                    .attachments([card]);
+                }
             });
-            // mappingArray.push(oIsv);
-            // console.log(oIsv);
-        }); 
+        //post result card to bot
+        session.send(msg);
+    }); 
 
-        GTMconnection.execSql(request);
+    //execute SQL request
+    GTMconnection.execSql(request);
     };
-
-
-
-
 
 //===============================================
 // Create Readiness name to value map
@@ -224,6 +255,7 @@ var connector = new builder.ChatConnector({
 var bot = new builder.UniversalBot(connector);
 
 var searchLimit = 5; //restrict number of results found
+
 
 server.post('/api/messages', connector.listen());
 
@@ -257,27 +289,14 @@ bot.dialog('/firstRun', [
      } 
  ]); 
 
-bot.dialog('/testGTM', [ 
+bot.dialog('/searchGTM', [ 
     function (session) { 
-
-        session.send('In GTM Test')
-        GTMconnection.on('connect', function(err) {
-            // If no error, then good to proceed.
-            
-                if (err) {
-                //    console.log(err);
-                    arrayErr.push(err);
-                } else {
-                console.log("Connected to " + this.config.server + " " + this.config.options.database);
-
-                testGTMConnection(session);  
-
-                };               
-        });
-        session.endDialog('Exiting GTM test');
+        verboseDebug('In GTM Test')
+        GTMQuery(session, queryString);         
+        verboseDebug('Exiting GTM test');
+        session.endDialog();
      } 
  ]); 
-
 
 bot.dialog('/menu', [
     function (session) {
@@ -292,17 +311,15 @@ bot.dialog('/menu', [
                     .buttons([
                         builder.CardAction.imBack(session, "appSearchCriteria", "Applications"),
                         builder.CardAction.imBack(session, "dxContacts", "DX Contacts"),
-                        builder.CardAction.imBack(session, "testGTM", "Test GTM")
                         ]),
      
             ]);
-        // builder.Prompts.choice(session, msg, "appSearchCriteria|dxContacts|testGTM",{maxRetries: 0});
         builder.Prompts.text(session, msg,{maxRetries: 0});
 
 
     },
     function (session, results) {
-        if  (results.response && (results.response == 'appSearchCriteria' || results.response == 'dxContacts' || results.response == 'testGTM')) {
+        if  (results.response && (results.response == 'appSearchCriteria' || results.response == 'dxContacts')) {
             // Launch demo dialog
             verboseDebug('Spotted button press',session);
             session.beginDialog('/' + results.response);
@@ -342,7 +359,7 @@ dialog.matches(/menu/i, [
 ])
 
 
-// var platform = "";
+
 
 dialog.matches('Find_App', [ 
 
@@ -473,11 +490,11 @@ bot.dialog('/appSearchCriteria', [
                         builder.CardAction.imBack(session, "changePlatform", "Platform: " + session.userData.platform.name),
                         builder.CardAction.imBack(session, "changeIndustry", "Industry: " + session.userData.industry),
                         builder.CardAction.imBack(session, "changeReadiness", "Readiness: " + session.userData.readiness.name),
-                        builder.CardAction.imBack(session, "displayResults", "Find Apps")
+                        builder.CardAction.imBack(session, "searchGTM", "Find Apps")
                     ])
      
             ]);
-        builder.Prompts.choice(session, msg, "changeGeography|changePlatform|changeIndustry|changeReadiness|displayResults", {maxRetries: 0})
+        builder.Prompts.choice(session, msg, "changeGeography|changePlatform|changeIndustry|changeReadiness|searchGTM", {maxRetries: 0})
 
 
     },
