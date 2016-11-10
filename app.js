@@ -1018,7 +1018,7 @@ server.get('/', function (req, res) {
     cache.put("TEBEMappingList", mappingArray);
     console.log('cache activated'); 
     console.log('cache activated'); 
-    res.send('isvfinderbot development environment -  Bot Running ' 
+    res.send('isvfinderbot development environment MASTER BRANCH -  Bot Running ' 
         + arrayErr.length + " " 
         + arrayErr[0] + " " 
         + arrayErr[1] + " " 
