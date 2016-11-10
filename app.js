@@ -144,20 +144,20 @@ var GTMconfig = {
     options: {encrypt: true, database: process.env.GTMSQLdatabase}
 };
 
-var GTMconnection = new Connection(GTMconfig);
-GTMconnection.on('connect', function(err) {
-    // If no error, then good to proceed.
+// var GTMconnection = new Connection(GTMconfig);
+// GTMconnection.on('connect', function(err) {
+//     // If no error, then good to proceed.
     
-        if (err) {
-        //    console.log(err);
-            arrayErr.push(err);
-        } else {
-        console.log("Connected to " + this.config.server + " " + this.config.options.database);
+//         if (err) {
+//         //    console.log(err);
+//             arrayErr.push(err);
+//         } else {
+//         console.log("Connected to " + this.config.server + " " + this.config.options.database);
 
 
 
-        };               
-});
+//         };               
+// });
 
 function isvCard() {
     this.appId = 0;
