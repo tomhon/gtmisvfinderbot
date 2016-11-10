@@ -168,15 +168,51 @@ function isvCard() {
     this.platform = "";
     this.sellCountry = "";
     this.originCountry = "";
+    this.gtmTier = "";
+    this.businessModel = "";
     this.readiness = "";
     this.gtmContact = "";
     this.pbeContact = "";
     this.teContact = "";
-    this.url = "www.microsoft.com";
+    this.url = "";
 }
 
-var queryString = "SELECT Application.ApplicationId, Application.ApplicationName, Application.AccountName, Application.IndustrialSectorName, Application.PlatformName from dbo.Application where (Application.CountryName = 'France' AND Application.IsWindows = 'True')"
+var queryString = "";
 
+//===============================================
+// Piece together the query string
+//==============================================
+
+function createQueryString(session) {
+        queryString = "SELECT TOP " + searchLimit + " Application.ApplicationId, Application.ApplicationName, Application.AccountName, Application.IndustryName, Application.IndustrialSectorName, Application.PlatformName, Application.Readiness, Account.GtmTier, Country.Name AS CountryName, Channel.Name AS ChannelName" 
+        + " FROM dbo.Application" 
+        + " LEFT JOIN dbo.Account ON Application.AccountId=Account.AccountId"
+        + " LEFT JOIN dbo.ApplicationCountry ON Application.ApplicationID=ApplicationCountry.ApplicationId"
+        + " LEFT JOIN dbo.Country ON ApplicationCountry.CountryId=Country.CountryId"
+        + " LEFT JOIN dbo.ApplicationChannel ON Application.ApplicationId=ApplicationChannel.ApplicationId"
+        + " LEFT JOIN dbo.Channel ON ApplicationChannel.ChannelId=Channel.ChannelId"
+        + " WHERE ("
+        + " Country.Name LIKE '" + session.userData.geography + "'"
+        // + " AND Application.PlatformName LIKE '" + session.userData.platform.name + "'"
+        + " AND ("
+        +  "(Application.IsAzure = 'true' AND Application.IsAzure = '" + session.userData.platform.IsAzure + "')"
+        +  "OR (Application.IsDynamics = 'true' AND Application.IsDynamics = '" + session.userData.platform.IsDynamics + "')"
+        +  "OR (Application.IsOffice365 = 'true' AND Application.IsOffice365 = '" + session.userData.platform.IsOffice365 + "')"
+        +  "OR (Application.IsSqlServer = 'true' AND Application.IsSqlServer = '" + session.userData.platform.IsSqlServer + "')"
+        +  "OR (Application.IsWindows = 'true' AND Application.IsWindows = '" + session.userData.platform.IsWindows + "')"
+        + ")"                                
+        + " AND Application.IndustrialSectorName LIKE '" + session.userData.industry + "'"
+        + " AND Application.Readiness >= " + session.userData.readiness.value
+        + " AND ApplicationCountry.HasSellers = 'true'"
+        + " AND Channel.Name IS NOT NULL"
+        + ") ORDER BY Application.Readiness DESC";
+
+        console.log('Query =', queryString);
+};
+
+//===============================================
+// Execute SQL Query, unpack results and send to bot
+//===============================================
 function GTMQuery(session, queryString) {
     //set up SQL request  
     request = new Request( queryString, function(err) {
@@ -190,10 +226,15 @@ function GTMQuery(session, queryString) {
 
     //unpack data from SQL query as it's returned
     request.on('row', function(columns) {
+        verboseDebug('received data from SQL');
         var msg = new builder.Message(session);
         var card = new builder.HeroCard(session)
         var result = new isvCard();
-        verboseDebug('received data from SQL');
+        if (session.userData.platform.IsAzure) {result.platform = 'Azure'};
+        if (session.userData.platform.IsDynamics) {result.platform = 'Dynamics'};
+        if (session.userData.platform.IsOffice365) {result.platform = 'Office365'};
+        if (session.userData.platform.IsSqlServer) {result.platform = 'SQL Server'};
+        if (session.userData.platform.IsWindows) {result.platform = 'Windows'};                
         columns.forEach(function(column) {
             if (column.value === null) {
             // no data returned in row
@@ -201,6 +242,7 @@ function GTMQuery(session, queryString) {
                 switch(column.metadata.colName) {
                     case "ApplicationId":
                         result.appId = column.value;
+                        result.url = "https://msgtm.azurewebsites.net/en-US/Applications/" + result.appId + "/view"
                         verboseDebug(result.appId);
                         break;
                     case "ApplicationName": 
@@ -215,14 +257,26 @@ function GTMQuery(session, queryString) {
                     case "IndustryName":
                         result.industry = column.value;
                         break;
-                    case "PlatformName":
-                        result.platform = column.value;
+                    // case "PlatformName":
+                    //     result.platform = column.value;
+                    //     break;
+                    case "CountryName":
+                        result.sellCountry = column.value;
                         break;
+                    case "GtmTier":
+                        result.gtmTier = column.value;
+                        break;
+                    case "ChannelName":
+                        result.businessModel = column.value;
+                        break;
+                    case "Readiness":
+                        result.readiness = column.value;
+                        break;                        
                     }  
                 card
-                    .title(result.appName)
-                    .subtitle(result.isvName + ', '+ result.sellCountry)
-                    .text('Industry: ' + result.crossIndustry + ' Platform: '+ result.platform + ' Readiness: '+ result.readiness)
+                    .title(result.appName.substr(0,29))
+                    .subtitle(result.isvName.substr(0,14) + ', '+ result.sellCountry + ", " + result.gtmTier.substr(0,6))
+                    .text('Ind: ' + result.crossIndustry.substr(0,9) + ' Biz: '+ result.businessModel.substr(0,9) + ' Plat: '+ result.platform  + ' Read: '+ readinessMap[result.readiness])
                     .tap(builder.CardAction.openUrl(session, result.url ))
                 msg
                     .attachmentLayout(builder.AttachmentLayout.carousel)
@@ -236,6 +290,11 @@ function GTMQuery(session, queryString) {
     //execute SQL request
     GTMconnection.execSql(request);
     };
+
+
+
+
+
 
 //===============================================
 // Create Readiness name to value map
@@ -369,6 +428,8 @@ dialog.matches('Find_App', [
 
         // Resolve and store any entities passed from LUIS.
         initializeSearch(session);
+
+
         var geographyEntity = builder.EntityRecognizer.findEntity(args.entities, 'builtin.geography.country');
         var anyGeography= true; 
         var platformEntity = builder.EntityRecognizer.findEntity(args.entities, 'Platform');
@@ -383,6 +444,7 @@ dialog.matches('Find_App', [
             verboseDebug('Geography found '+ session.userData.geography,session);
             anyGeography = false;
             } else {
+                session.userData.geography = '%';
                 verboseDebug('Any Geography',session)
             }
        
@@ -412,6 +474,7 @@ dialog.matches('Find_App', [
                     }
             anyPlatform = false;
             } else {
+                session.userData.platform.name = '%';
                 verboseDebug('Any Platform',session)
             }
         
@@ -420,6 +483,7 @@ dialog.matches('Find_App', [
             verboseDebug('Industry found ' + session.userData.industry,session);
             anyIndustry = false;
             } else {
+                session.userData.industry = '%';
                 verboseDebug('Any Industry',session)
             }
         
@@ -450,13 +514,12 @@ dialog.matches('Find_App', [
             } else {
                 verboseDebug('Any Readiness',session)
             }
-
-        //search mapping array for country
+             createQueryString(session);
 
         if (anyGeography || anyIndustry || anyPlatform || anyReadiness) {
             session.replaceDialog('/appSearchCriteria')
         } else {
-            session.replaceDialog('/displayResults')
+            session.replaceDialog('/searchGTM')
         }
 
         
@@ -475,6 +538,15 @@ bot.dialog('/appSearchCriteria', [
      
         verboseDebug('appSearchCriteria called',session);
         initializeSearch(session);
+        var geographyButton = session.userData.geography;
+        if (geographyButton == '%') {geographyButton = "Any"};
+        var platformButton = session.userData.platform.name;
+        if (platformButton == '%') {platformButton = "Any"}
+        var industryButton = session.userData.industry;
+        if (industryButton == '%') {industryButton = "Any"}
+        var readinessButton = session.userData.readiness.name;
+        if (readinessButton == '%') {readinessButton = "Any"}
+
 
         var msg = new builder.Message(session)
             .textFormat(builder.TextFormat.xml)
@@ -486,10 +558,10 @@ bot.dialog('/appSearchCriteria', [
                     .subtitle("Press Find Apps or change any search parameter")
 
                     .buttons([
-                        builder.CardAction.imBack(session, "changeGeography", "Geography: " + session.userData.geography),
-                        builder.CardAction.imBack(session, "changePlatform", "Platform: " + session.userData.platform.name),
-                        builder.CardAction.imBack(session, "changeIndustry", "Industry: " + session.userData.industry),
-                        builder.CardAction.imBack(session, "changeReadiness", "Readiness: " + session.userData.readiness.name),
+                        builder.CardAction.imBack(session, "changeGeography", "Geography: " + geographyButton),
+                        builder.CardAction.imBack(session, "changePlatform", "Platform: " + platformButton),
+                        builder.CardAction.imBack(session, "changeIndustry", "Industry: " + industryButton),
+                        builder.CardAction.imBack(session, "changeReadiness", "Readiness: " + readinessButton),
                         builder.CardAction.imBack(session, "searchGTM", "Find Apps")
                     ])
      
@@ -1164,7 +1236,7 @@ server.get('/', function (req, res) {
     cache.put("TEBEMappingList", mappingArray);
     console.log('cache activated'); 
     console.log('cache activated'); 
-    res.send('isvfinderbot development environment -  Bot Running ' 
+    res.send('isvfinderbot development environment SQL BRANCH -  Bot Running ' 
         + arrayErr.length + "\n" 
         + arrayErr[0] + "\n" 
         + arrayErr[1] + "\n" 
