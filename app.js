@@ -2,7 +2,7 @@
 
 var restify = require('restify');
 var server = restify.createServer();
-var o = require('odata');
+// var o = require('odata');
 var cache = require('memory-cache');
 var builder = require('botbuilder');
 
