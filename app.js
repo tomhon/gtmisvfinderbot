@@ -1243,9 +1243,9 @@ server.get('/', function (req, res) {
         + mappingArray.length + "\n"
         + process.env.AppID + "\n"
         + process.env.AppSecret + "\n"
-        + Applications.length + "\n"
-        + ApplicationCountries.length + "\n"
-        + ApplicationIndustries.length
+        // + Applications.length + "\n"
+        // + ApplicationCountries.length + "\n"
+        // + ApplicationIndustries.length
         ); 
     arrayErr.forEach(function(item) { 
     // console.log( "K9 Bot = " + item);  
