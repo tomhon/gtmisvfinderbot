@@ -144,20 +144,20 @@ var GTMconfig = {
     options: {encrypt: true, database: process.env.GTMSQLdatabase}
 };
 
-// var GTMconnection = new Connection(GTMconfig);
-// GTMconnection.on('connect', function(err) {
-//     // If no error, then good to proceed.
+var GTMconnection = new Connection(GTMconfig);
+GTMconnection.on('connect', function(err) {
+    // If no error, then good to proceed.
     
-//         if (err) {
-//         //    console.log(err);
-//             arrayErr.push(err);
-//         } else {
-//         console.log("Connected to " + this.config.server + " " + this.config.options.database);
+        if (err) {
+        //    console.log(err);
+            arrayErr.push(err);
+        } else {
+        console.log("Connected to " + this.config.server + " " + this.config.options.database);
 
 
 
-//         };               
-// });
+        };               
+});
 
 function isvCard() {
     this.appId = 0;
@@ -179,6 +179,62 @@ function isvCard() {
 
 var queryString = "";
 
+
+//===============================================
+// Create Readiness name to value map
+//===============================================
+
+var readinessMap = new Array();
+    readinessMap[0] = "Not Ready";
+    readinessMap[1] = "Co-Marketing Ready";
+    readinessMap[2] = "Co-Sell Ready";
+    readinessMap[3] = "Co-Sell Recomended";
+
+// Create bot and bind to chat
+var connector = new builder.ChatConnector({
+    appId: process.env.AppID,
+    appPassword: process.env.AppSecret
+    });
+var bot = new builder.UniversalBot(connector);
+
+var searchLimit = 5; //restrict number of results found
+
+
+server.post('/api/messages', connector.listen());
+
+function initializeSearch(session) {
+    if (!session.userData.geography) {session.userData.geography = "%"};
+    if (!session.userData.industry) {session.userData.industry = "%"};
+    if (!session.userData.platform) {session.userData.platform.name = "%"};
+    if (!session.userData.readiness) {session.userData.readiness = "%"};
+}
+
+
+// Create LUIS recognizer that points at our model and add it as the root '/' dialog for our Cortana Bot.
+var model = process.env.LUISServiceURL;
+var recognizer = new builder.LuisRecognizer(model);
+var dialog = new builder.IntentDialog({ recognizers: [recognizer] });
+bot.use(builder.Middleware.firstRun({ version: 1.0, dialogId: '*:/firstRun' }));
+
+
+bot.dialog('/', dialog);
+
+//=============================
+//Dialog to handle first run
+//============================
+bot.dialog('/firstRun', [ 
+    function (session) { 
+         builder.Prompts.text(session, "Hello... What's your name?"); 
+     }, 
+     function (session, results) { 
+         // We'll save the users name and send them an initial greeting. All  
+         // future messages from the user will be routed to the root dialog. 
+         session.userData.name = results.response; 
+         session.send("Hi %s, welcome to ISVFinderBot. I can help you recomend Applications for your partners as well as find DX contacts.", session.userData.name);
+         session.replaceDialog('/Help');  
+     } 
+ ]); 
+
 //===============================================
 // Piece together the query string
 //==============================================
@@ -192,24 +248,29 @@ function createQueryString(session) {
         + " LEFT JOIN dbo.ApplicationChannel ON Application.ApplicationId=ApplicationChannel.ApplicationId"
         + " LEFT JOIN dbo.Channel ON ApplicationChannel.ChannelId=Channel.ChannelId"
         + " WHERE ("
-        + " Country.Name LIKE '" + session.userData.geography + "'"
-        // + " AND Application.PlatformName LIKE '" + session.userData.platform.name + "'"
-        + " AND ("
+        + " ("
         +  "(Application.IsAzure = 'true' AND Application.IsAzure = '" + session.userData.platform.IsAzure + "')"
         +  "OR (Application.IsDynamics = 'true' AND Application.IsDynamics = '" + session.userData.platform.IsDynamics + "')"
         +  "OR (Application.IsOffice365 = 'true' AND Application.IsOffice365 = '" + session.userData.platform.IsOffice365 + "')"
         +  "OR (Application.IsSqlServer = 'true' AND Application.IsSqlServer = '" + session.userData.platform.IsSqlServer + "')"
         +  "OR (Application.IsWindows = 'true' AND Application.IsWindows = '" + session.userData.platform.IsWindows + "')"
-        + ")"                                
-        + " AND Application.IndustrialSectorName LIKE '" + session.userData.industry + "'"
-        + " AND Application.Readiness >= " + session.userData.readiness.value
+        + ")"
+        // if (session.userData.geography != 'Any') {queryString = queryString 
+            + " AND Country.Name LIKE '" + session.userData.geography + "'"  
+        // } ;                               
+        // if (session.userData.industry != 'Any') {queryString = queryString 
+            + " AND Application.IndustrialSectorName LIKE '" + session.userData.industry + "'"
+        // };
+        // if (session.userData.readiness != 'Any') {queryString = queryString 
+            + " AND Application.Readiness >= " + session.userData.readiness.value
+        // };
+        // queryString = queryString 
         + " AND ApplicationCountry.HasSellers = 'true'"
         + " AND Channel.Name IS NOT NULL"
         + ") ORDER BY Application.Readiness DESC";
 
         console.log('Query =', queryString);
 };
-
 //===============================================
 // Execute SQL Query, unpack results and send to bot
 //===============================================
@@ -296,67 +357,28 @@ function GTMQuery(session, queryString) {
 
 
 
-//===============================================
-// Create Readiness name to value map
-//===============================================
-
-var readinessMap = new Array();
-    readinessMap[0] = "Not Ready";
-    readinessMap[1] = "Co-Marketing Ready";
-    readinessMap[2] = "Co-Sell Ready";
-    readinessMap[3] = "Co-Sell Recomended";
-
-// Create bot and bind to chat
-var connector = new builder.ChatConnector({
-    appId: process.env.AppID,
-    appPassword: process.env.AppSecret
-    });
-var bot = new builder.UniversalBot(connector);
-
-var searchLimit = 5; //restrict number of results found
 
 
-server.post('/api/messages', connector.listen());
-
-function initializeSearch(session) {
-    if (!session.userData.geography) {session.userData.geography = "Any - Default"};
-    if (!session.userData.industry) {session.userData.industry = "Any - Default"};
-    if (!session.userData.platform) {session.userData.platform.name = "Any - Default"};
-    if (!session.userData.readiness) {session.userData.readiness = "Any - Default"};
-}
 
 
-// Create LUIS recognizer that points at our model and add it as the root '/' dialog for our Cortana Bot.
-var model = process.env.LUISServiceURL;
-var recognizer = new builder.LuisRecognizer(model);
-var dialog = new builder.IntentDialog({ recognizers: [recognizer] });
-bot.use(builder.Middleware.firstRun({ version: 1.0, dialogId: '*:/firstRun' }));
 
-
-bot.dialog('/', dialog);
-
-bot.dialog('/firstRun', [ 
-    function (session) { 
-         builder.Prompts.text(session, "Hello... What's your name?"); 
-     }, 
-     function (session, results) { 
-         // We'll save the users name and send them an initial greeting. All  
-         // future messages from the user will be routed to the root dialog. 
-         session.userData.name = results.response; 
-         session.send("Hi %s, welcome to ISVFinderBot. I can help you recomend Applications for your partners as well as find DX contacts.", session.userData.name);
-         session.replaceDialog('/Help');  
-     } 
- ]); 
-
+//=============================
+//Dialog to call GTMQuery
+//============================
 bot.dialog('/searchGTM', [ 
     function (session) { 
-        verboseDebug('In GTM Test')
-        GTMQuery(session, queryString);         
-        verboseDebug('Exiting GTM test');
+        verboseDebug('In searchGTM')
+        createQueryString(session); //assemble query string
+        GTMQuery(session, queryString); //search db and display results        
+        verboseDebug('Exiting searchGTM');
         session.endDialog();
      } 
  ]); 
 
+
+//=============================
+//Dialog to display menu
+//============================
 bot.dialog('/menu', [
     function (session) {
         var msg = new builder.Message(session)
@@ -392,6 +414,9 @@ bot.dialog('/menu', [
     }    
 ])
 
+//=============================
+//Dialog to display help
+//============================
 bot.dialog('/Help', function (session, args, next) { 
     session.send( "Ask me.... Which Azure apps in Germany target telecommunications sector and are Co-Sell Ready?" ); 
     session.send( "... or Who is the TE for Amazon?" ); 
@@ -401,7 +426,9 @@ bot.dialog('/Help', function (session, args, next) {
     session.endDialog();
     }); 
 
-
+//=============================
+//Dialog to handle search for DX Contacts - currently not implemented TO DO
+//============================
 bot.dialog('/dxContacts', [
     function (session) {
         session.send( "Ask me... Who is the TE for Amazon?" ); 
@@ -411,6 +438,10 @@ bot.dialog('/dxContacts', [
             }
         ]);
 
+//=============================
+//Dialog to handle menu intent
+//============================
+
 dialog.matches(/menu/i, [
     function (session) {
         session.replaceDialog('/menu');
@@ -418,7 +449,9 @@ dialog.matches(/menu/i, [
 ])
 
 
-
+//=============================
+//Dialog to handle find_apps intent
+//============================
 
 dialog.matches('Find_App', [ 
 
@@ -514,13 +547,13 @@ dialog.matches('Find_App', [
             } else {
                 verboseDebug('Any Readiness',session)
             }
-             createQueryString(session);
+            //  createQueryString(session);
 
-        if (anyGeography || anyIndustry || anyPlatform || anyReadiness) {
-            session.replaceDialog('/appSearchCriteria')
-        } else {
+        // if (anyGeography || anyIndustry || anyPlatform || anyReadiness) {
+        //     session.replaceDialog('/appSearchCriteria')
+        // } else {
             session.replaceDialog('/searchGTM')
-        }
+        // }
 
         
         }
@@ -529,8 +562,9 @@ dialog.matches('Find_App', [
 ]);
 
 
-
-// Add intent handlers
+//=============================
+//Dialog to display search criteria
+//============================
 
 bot.dialog('/appSearchCriteria', [ 
 
@@ -670,131 +704,6 @@ bot.dialog('/changeReadiness', [
     }
 ]);
 
-
-
-bot.dialog('/displayResults', [
-    function (session) {
-            appInsightsClient.trackEvent("displayResults called");
-            verboseDebug('Display Results',session);
-            var results = new Array();
-
-            findApplications(session.userData.geography, session.userData.platform, session.userData.industry, session.userData.readiness, results, searchLimit)
-            if (results.length > 0 ) {
-                results.forEach(function(item) {
-                    //create herocard for each application found
-                    var card = new builder.HeroCard(session)
-                        .title(item.ApplicationName)
-                        .subtitle(item.AccountName + ', '+ item.CountryName)
-                        .text('Platform: '+ item.PlatformName + ' Industry: ' + item.ParentIndustryName + ' Readiness: '+ item.Readiness)
-                        .tap(builder.CardAction.openUrl(session, item.Url ))
-                    var msg = new builder.Message(session)
-                        .attachmentLayout(builder.AttachmentLayout.carousel)
-                        .attachments([card]);
-                    session.send(msg);
-                });
-            } else {
-                session.send("Sorry, I couldn't find any applications that match your search parameters");
-                //ideally route back to appSearchCriteria
-                // session.replaceDialog('/appSearchCriteria')
-            }
-            session.endDialog();
-    }
-]);
-
-
-
-function findApplications(geography, platform, industry, readiness, results, maxResultLength) {
-
-
-        verboseDebug('Entering findApplications. ' + ApplicationCountries.length);
-
-        //initialize search loop variables
-        var outputValues = "";
-        var geographyRegExp = new RegExp (geography, 'i');
-        var platformRegExp = new RegExp (platform.name, 'i');
-        var industryRegExp = new RegExp (industry, 'i');
-        var readinessRegExp = new RegExp (readiness, 'i');
-
-
-        // //create dummy data
-        // outputValues = {
-        //     'ApplicationName': "DummyApp1",
-        //     'AccountName': "Account1",
-        //     'PlatformName': "PlatName1",
-        //     'ParentIndustryName': "IndustryName1",
-        //     'CountryName': "CountryName1",
-        //     'Readiness': "Co Sell Ready",
-        //     'Url': 'http://Microsoft.com'
-        // };
-        // results.push(outputValues);
-
-        // outputValues = {
-        //     'ApplicationName': "DummyApp2",
-        //     'AccountName': "Account2",
-        //     'PlatformName': "PlatName2",
-        //     'ParentIndustryName': "IndustryName2",
-        //     'CountryName': "CountryName2",
-        //     'Readiness': "Co Sell Ready",
-        //     'Url': 'http://Microsoft.com'
-        // };
-        // results.push(outputValues);
-    
-
-
-
-        //seachIndustries
-        var i=0; //iteration counter for ApplicationIndustries array
-        while ( (i<ApplicationIndustries.length) && (results.length < maxResultLength)) {
-            if (ApplicationIndustries[i].ParentIndustryName.match(industryRegExp)) {
-                verboseDebug('Found Industries ='+ i);
-                //found correct Industry
-                //searchApplicationPlatforms
-                var j=0 //iteration counter for Applications array
-                while ( (j<Applications.length) && (results.length < maxResultLength)) {
-                    if ((ApplicationIndustries[i].ApplicationId === Applications[j].ApplicationId)
-                        && ( (platform.IsAzure && Applications[j].IsAzure) 
-                            || (platform.IsDynamics && Applications[j].IsDynamics )
-                            || (platform.IsOffice365 && Applications[j].IsOffice365 )
-                            || (platform.IsSqlServer && Applications[j].IsSqlServer )
-                            || (platform.IsWindows && Applications[j].IsWindows )
-                            )
-                        ) {
-                        verboseDebug('Found Industries ='+ i +', Applications ='+ j);
-                        //found correct Application
-                        //searchCountries
-                        var k=0; //iteration counter for ApplicationCountries array
-                        while ( (k<ApplicationCountries.length) && (results.length < maxResultLength)) {
-                            if ( (ApplicationCountries[k].CountryName.match(geographyRegExp)) 
-                                    && (Applications[j].ApplicationId === ApplicationCountries[k].ApplicationId) 
-                                    && (Applications[j].Readiness >= (readiness.value)) //test for Readiness match
-                                    ) {
-                                verboseDebug('Found Industries ='+ i +', Applications ='+ j + ', Countries =' + k);
-                                //found correct geography
-                                outputValues = {
-                                    'ApplicationName': Applications[j].ApplicationName,
-                                    'AccountName': Applications[j].AccountName,
-                                    'PlatformName': platform.name,
-                                    'ParentIndustryName': ApplicationIndustries[i].ParentIndustryName,
-                                    'CountryName': ApplicationCountries[k].CountryName,
-                                    'Readiness': readinessMap[Applications[j].Readiness],
-                                    'Url': Applications[j].Url
-                                };
-                            console.log(Applications[j]);
-                            results.push(outputValues);
-                            }
-                            k++;
-                        }
-                        //end of searchCountries
-                    }
-                    j++;
-                }
-                //end of searchApplicationPlatforms
-            }
-            i++;        
-        }
-        //end of searchIndustries
-    }
-//===============================End of Find_App==========================
 
 dialog.matches('Find_ISV_Contact', [
     function (session, args, next) {
