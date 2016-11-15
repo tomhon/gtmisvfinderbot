@@ -65,8 +65,8 @@ k9connection.on('connect', function(err) {
     // If no error, then good to proceed.
     
         if (err) {
-        //    console.log(err);
-            arrayErr.push(err);
+           console.log(err);
+
         } else {
           console.log("Connected to " + this.config.server + " " + this.config.options.database);
           arrayErr.push("Connected to " + this.config.server);
@@ -178,6 +178,7 @@ function isvCard() {
 }
 
 var queryString = "";
+var noResults = true;
 
 
 //===============================================
@@ -205,10 +206,9 @@ server.post('/api/messages', connector.listen());
 function initializeSearch(session) {
     if (!session.userData.geography) {session.userData.geography = "%"};
     if (!session.userData.industry) {session.userData.industry = "%"};
-    if (!session.userData.platform) {session.userData.platform.name = "%"};
+    if (!session.userData.platform) {session.userData.platform = {'name': "%", 'IsAzure': true, 'IsDynamics': true, 'IsOffice365': true, 'IsSqlServer': true, 'IsWindows': true};};
     if (!session.userData.readiness) {session.userData.readiness = "%"};
 }
-
 
 // Create LUIS recognizer that points at our model and add it as the root '/' dialog for our Cortana Bot.
 var model = process.env.LUISServiceURL;
@@ -231,6 +231,7 @@ bot.dialog('/firstRun', [
          // future messages from the user will be routed to the root dialog. 
          session.userData.name = results.response; 
          session.send("Hi %s, welcome to ISVFinderBot. I can help you recomend Applications for your partners as well as find DX contacts.", session.userData.name);
+         initializeSearch(session);
          session.replaceDialog('/Help');  
      } 
  ]); 
@@ -275,7 +276,8 @@ function createQueryString(session) {
 // Execute SQL Query, unpack results and send to bot
 //===============================================
 function GTMQuery(session, queryString) {
-    //set up SQL request  
+    //set up SQL request
+    noResults = true;   
     request = new Request( queryString, function(err) {
         if (err) {
         verboseDebug(err);
@@ -284,11 +286,11 @@ function GTMQuery(session, queryString) {
         verboseDebug('GTM SQL request succeeded');
         }
     });
-
     //unpack data from SQL query as it's returned
     request.on('row', function(columns) {
         verboseDebug('received data from SQL');
         var msg = new builder.Message(session);
+        noResults=false;
         var card = new builder.HeroCard(session)
         var result = new isvCard();
         if (session.userData.platform.IsAzure) {result.platform = 'Azure'};
@@ -335,9 +337,9 @@ function GTMQuery(session, queryString) {
                         break;                        
                     }  
                 card
-                    .title(result.appName.substr(0,29))
+                    .title(result.appName.substr(0,24))
                     .subtitle(result.isvName.substr(0,14) + ', '+ result.sellCountry + ", " + result.gtmTier.substr(0,6))
-                    .text('Ind: ' + result.crossIndustry.substr(0,9) + ' Biz: '+ result.businessModel.substr(0,9) + ' Plat: '+ result.platform  + ' Read: '+ readinessMap[result.readiness])
+                    .text( result.crossIndustry.substr(0,16) + ' | '+ result.businessModel.substr(0,16) + ' | '+ result.platform  + ' | '+ readinessMap[result.readiness])
                     .tap(builder.CardAction.openUrl(session, result.url ))
                 msg
                     .attachmentLayout(builder.AttachmentLayout.carousel)
@@ -371,7 +373,7 @@ bot.dialog('/searchGTM', [
         createQueryString(session); //assemble query string
         GTMQuery(session, queryString); //search db and display results        
         verboseDebug('Exiting searchGTM');
-        session.endDialog();
+        session.replaceDialog('/appSearchCriteria');
      } 
  ]); 
 
@@ -381,37 +383,41 @@ bot.dialog('/searchGTM', [
 //============================
 bot.dialog('/menu', [
     function (session) {
-        var msg = new builder.Message(session)
-            .textFormat(builder.TextFormat.xml)
-            .attachmentLayout(builder.AttachmentLayout.carousel)
-            .attachments([
-                 new builder.HeroCard(session)
-                    .title("Hi %s! Welcome to ISVFinder", session.userData.name)
-                    .subtitle("What are you looking for?")
+        session.send("Hi %s! Welcome to ISVFinder", session.userData.name);
+        session.endDialog("I can help you find ISVs or DX Contacts");
+    }
+    // function (session) {
+    //     var msg = new builder.Message(session)
+    //         .textFormat(builder.TextFormat.xml)
+    //         .attachmentLayout(builder.AttachmentLayout.carousel)
+    //         .attachments([
+    //              new builder.HeroCard(session)
+    //                 .title("Hi %s! Welcome to ISVFinder", session.userData.name)
+    //                 .subtitle("What are you looking for?")
 
-                    .buttons([
-                        builder.CardAction.imBack(session, "appSearchCriteria", "Applications"),
-                        builder.CardAction.imBack(session, "dxContacts", "DX Contacts"),
-                        ]),
+    //                 .buttons([
+    //                     builder.CardAction.imBack(session, "appSearchCriteria", "Applications"),
+    //                     builder.CardAction.imBack(session, "dxContacts", "DX Contacts"),
+    //                     ]),
      
-            ]);
-        builder.Prompts.text(session, msg,{maxRetries: 0});
+    //         ]);
+    //     builder.Prompts.text(session, msg,{maxRetries: 0});
 
 
-    },
-    function (session, results) {
-        if  (results.response && (results.response == 'appSearchCriteria' || results.response == 'dxContacts')) {
-            // Launch demo dialog
-            verboseDebug('Spotted button press',session);
-            session.beginDialog('/' + results.response);
-        } else {
-            // Exit the menu
-            verboseDebug('no button press',session);
-            //TO DO pass results for processing as normal client
-            // session.replaceDialog(results.response);
-            session.replaceDialog('/Help');
-        }
-    }    
+    // },
+    // function (session, results) {
+    //     if  (results.response && (results.response == 'appSearchCriteria' || results.response == 'dxContacts')) {
+    //         // Launch demo dialog
+    //         verboseDebug('Spotted button press',session);
+    //         session.beginDialog('/' + results.response);
+    //     } else {
+    //         // Exit the menu
+    //         verboseDebug('no button press',session);
+    //         //TO DO pass results for processing as normal client
+    //         // session.replaceDialog(results.response);
+    //         session.replaceDialog('/Help');
+    //     }
+    // }    
 ])
 
 //=============================
@@ -464,21 +470,22 @@ dialog.matches('Find_App', [
 
 
         var geographyEntity = builder.EntityRecognizer.findEntity(args.entities, 'builtin.geography.country');
-        var anyGeography= true; 
+        // var anyGeography= true; 
         var platformEntity = builder.EntityRecognizer.findEntity(args.entities, 'Platform');
-        var anyPlatform = true;
+        // var anyPlatform = true;
         var industryEntity = builder.EntityRecognizer.findEntity(args.entities, 'Industry');
-        var anyIndustry = true;
+        // var anyIndustry = true;
         var readinessEntity = builder.EntityRecognizer.findEntity(args.entities, 'Readiness');           
-        var anyReadiness = true;     
+        // var anyReadiness = true;     
 
         if (geographyEntity) {
             session.userData.geography = geographyEntity.entity;
             verboseDebug('Geography found '+ session.userData.geography,session);
-            anyGeography = false;
-            } else {
-                session.userData.geography = '%';
-                verboseDebug('Any Geography',session)
+            // anyGeography = false;
+            // } 
+            // else {
+            //     session.userData.geography = '%';
+            //     verboseDebug('Any Geography',session)
             }
        
         if (platformEntity) {
@@ -505,25 +512,25 @@ dialog.matches('Find_App', [
                     session.userData.platform.IsWindows = true;
                     verboseDebug('IsWindows = '+ session.userData.platform.IsWindows, session);
                     }
-            anyPlatform = false;
-            } else {
-                session.userData.platform.name = '%';
-                verboseDebug('Any Platform',session)
+            // anyPlatform = false;
+            // } else {
+            //     session.userData.platform.name = '%';
+            //     verboseDebug('Any Platform',session)
             }
         
         if (industryEntity) {
             session.userData.industry = industryEntity.entity;
             verboseDebug('Industry found ' + session.userData.industry,session);
-            anyIndustry = false;
-            } else {
-                session.userData.industry = '%';
-                verboseDebug('Any Industry',session)
+            // anyIndustry = false;
+            // } else {
+            //     session.userData.industry = '%';
+            //     verboseDebug('Any Industry',session)
             }
         
         if (readinessEntity) {
             session.userData.readiness = {'name': readinessEntity.entity , 'value': 0};
             verboseDebug('Readiness found ' + session.userData.readiness.name, session);
-            anyReadiness = false;
+            // anyReadiness = false;
 
             if (session.userData.readiness.name == "not ready") { 
                     session.userData.readiness.value = 0;
@@ -544,8 +551,8 @@ dialog.matches('Find_App', [
 
                 verboseDebug(session.userData.readiness.name, session);
 
-            } else {
-                verboseDebug('Any Readiness',session)
+            // } else {
+            //     verboseDebug('Any Readiness',session)
             }
             //  createQueryString(session);
 
@@ -600,7 +607,8 @@ bot.dialog('/appSearchCriteria', [
                     ])
      
             ]);
-        builder.Prompts.choice(session, msg, "changeGeography|changePlatform|changeIndustry|changeReadiness|searchGTM", {maxRetries: 0})
+        // builder.Prompts.choice(session, msg, "changeGeography|changePlatform|changeIndustry|changeReadiness|searchGTM", {maxRetries: 0})
+        session.endDialog(msg);
 
 
     },
@@ -619,12 +627,14 @@ bot.dialog('/appSearchCriteria', [
 
 bot.dialog('/changeGeography', [
     function (session) {
-        builder.Prompts.text(session, 'Type a geography or leave it blank to search everywhere', {maxRetries: 0} );
+        builder.Prompts.text(session, "Enter a geography or 'Any' to search everywhere", {maxRetries: 0} );
     },
     function (session, results) {
         session.userData.geography = results.response;
+        if ((session.userData.geography == "Any") || (session.userData.geography === 'any')) {session.userData.geography = '%'}
+        //TO DO check valid geography
         verboseDebug(results.response,session);
-        session.replaceDialog('/appSearchCriteria');
+        session.replaceDialog('/searchGTM');
     }
 ]);
 
@@ -634,43 +644,49 @@ bot.dialog('/changePlatform', [
     },
     function (session, results) {
         if (results.response) {
-            session.userData.platform = {'name': "Any" , 'IsAzure': false, 'IsDynamics': false, 'IsOffice365': false, 'IsSqlServer': false, 'IsWindows': false};
+            session.userData.platform = {'name': "None" , 'IsAzure': false, 'IsDynamics': false, 'IsOffice365': false, 'IsSqlServer': false, 'IsWindows': false};
 
             if (results.response.entity == "Azure") { 
-                    session.userData.platform = {'name': "Azure", 'IsAzure' : true}
+                    session.userData.platform = {'name': "Azure", 'IsAzure' : true, 'IsDynamics': false, 'IsOffice365': false, 'IsSqlServer': false, 'IsWindows': false}
                     verboseDebug('IsAzure = '+ session.userData.platform.IsAzure, session);
                     }
             if (results.response.entity == "Dynamics") { 
-                    session.userData.platform = {'name' : "Dynamics", 'IsDynamics': true};
+                    session.userData.platform = {'name' : "Dynamics", 'IsAzure': false, 'IsDynamics': true, 'IsOffice365': false, 'IsSqlServer': false, 'IsWindows': false};
                     verboseDebug('IsDynamics = '+ session.userData.platform.IsDynamics, session);
                     }
             if (results.response.entity == "Office365") { 
-                    session.userData.platform = {'name' : "Office365", 'IsOffice365' : true};
+                    session.userData.platform = {'name' : "Office365", 'IsAzure': false, 'IsDynamics': false, 'IsOffice365': true, 'IsSqlServer': false, 'IsWindows': false};
                     verboseDebug('IsOffice365 = '+ session.userData.platform.IsOffice365, session);
                     }
             if (results.response.entity == "SQL Server") { 
-                    session.userData.platform = {'name': "SQL Server", 'IsSqlServer' : true};
+                    session.userData.platform = {'name': "SQL Server", 'IsAzure': false, 'IsDynamics': false, 'IsOffice365': false, 'IsSqlServer': true, 'IsWindows': false};
                     verboseDebug('IsSqlServer = '+ session.userData.platform.IsSqlServer, session);
                     }
             if (results.response.entity == "Windows") { 
-                    session.userData.platform = {'name' : "Windows", 'IsWindows': true};
+                    session.userData.platform = {'name' : "Windows", 'IsAzure': false, 'IsDynamics': false, 'IsOffice365': false, 'IsSqlServer': false, 'IsWindows': true};
                     verboseDebug('IsWindows = '+ session.userData.platform.IsWindows, session);
+                    }
+            if (results.response.entity == "Any") { 
+                    session.userData.platform = {'name': "%" , 'IsAzure': true, 'IsDynamics': true, 'IsOffice365': true, 'IsSqlServer': true, 'IsWindows': true};
+                    verboseDebug('Any = '+ session.userData.platform, session);
                     }
         }
 
         verboseDebug(results.response,session);
-        session.replaceDialog('/appSearchCriteria');
+        session.replaceDialog('/searchGTM');
     }
 ]);
 
 bot.dialog('/changeIndustry', [
     function (session) {
-        builder.Prompts.text(session, 'Enter an industry  or leave it blank to search all', {maxRetries: 0} );
+        builder.Prompts.text(session, "Enter an industry or 'Any' to search all", {maxRetries: 0} );
     },
     function (session, results) {
         session.userData.industry = results.response;
+        if ((session.userData.industry == "Any") || (session.userData.industry === 'any')) {session.userData.industry = '%'}
+        //TO DO validate industry
         verboseDebug(results.response,session);
-        session.replaceDialog('/appSearchCriteria');
+        session.replaceDialog('/searchGTM');
     }
 ]);
 
@@ -682,7 +698,7 @@ bot.dialog('/changeReadiness', [
 
         session.userData.readiness = {'name': results.response.entity , 'value': 0};
 
-            if ((session.userData.readiness.name == "not ready") || (session.userData.readiness.name == "Any")) { 
+            if ((session.userData.readiness.name == "not ready") || (session.userData.readiness.name == "Any") || (session.userData.readiness.name == "any")) { 
                     session.userData.readiness.value = 0;
                     verboseDebug('Readiness = '+ session.userData.readiness.value, session);
                     }
@@ -700,7 +716,7 @@ bot.dialog('/changeReadiness', [
                     }
 
         verboseDebug(session.userData.readiness.name, session);
-        session.replaceDialog('/appSearchCriteria');
+        session.replaceDialog('/searchGTM');
     }
 ]);
 
