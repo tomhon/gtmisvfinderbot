@@ -139,7 +139,7 @@ k9connection.on('connect', function(err) {
 var GTMconfig = {
     userName: process.env.GTMSQLuserName,
     password: process.env.GTMSQLpassword,
-    server: process.env.GTMSQLserver + 'error',
+    server: process.env.GTMSQLserver,
     // If you are on Microsoft Azure, you need this:
     options: {encrypt: true, database: process.env.GTMSQLdatabase}
 };
