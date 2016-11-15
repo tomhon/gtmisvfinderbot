@@ -139,7 +139,7 @@ k9connection.on('connect', function(err) {
 var GTMconfig = {
     userName: process.env.GTMSQLuserName,
     password: process.env.GTMSQLpassword,
-    server: process.env.GTMSQLserver,
+    server: process.env.GTMSQLserver + 'error',
     // If you are on Microsoft Azure, you need this:
     options: {encrypt: true, database: process.env.GTMSQLdatabase}
 };
@@ -149,8 +149,8 @@ GTMconnection.on('connect', function(err) {
     // If no error, then good to proceed.
     
         if (err) {
-        //    console.log(err);
-            arrayErr.push(err);
+            console.log(err);
+            arrayErr.push(err.message);
         } else {
         console.log("Connected to " + this.config.server + " " + this.config.options.database);
 
@@ -204,10 +204,18 @@ var searchLimit = 5; //restrict number of results found
 server.post('/api/messages', connector.listen());
 
 function initializeSearch(session) {
-    if (!session.userData.geography) {session.userData.geography = "%"};
-    if (!session.userData.industry) {session.userData.industry = "%"};
-    if (!session.userData.platform) {session.userData.platform = {'name': "%", 'IsAzure': true, 'IsDynamics': true, 'IsOffice365': true, 'IsSqlServer': true, 'IsWindows': true};};
-    if (!session.userData.readiness) {session.userData.readiness = "%"};
+    // if (!session.userData.geography) {
+        session.userData.geography = "%"
+    // };
+    // if (!session.userData.industry) {
+        session.userData.industry = "%"
+    // };
+    // if (!session.userData.platform) {
+        session.userData.platform = {'name': "%", 'IsAzure': true, 'IsDynamics': true, 'IsOffice365': true, 'IsSqlServer': true, 'IsWindows': true};
+    // };
+    // if (!session.userData.readiness) {
+        session.userData.readiness = "0"
+    // };
 }
 
 // Create LUIS recognizer that points at our model and add it as the root '/' dialog for our Cortana Bot.
@@ -215,6 +223,7 @@ var model = process.env.LUISServiceURL;
 var recognizer = new builder.LuisRecognizer(model);
 var dialog = new builder.IntentDialog({ recognizers: [recognizer] });
 bot.use(builder.Middleware.firstRun({ version: 1.0, dialogId: '*:/firstRun' }));
+
 
 
 bot.dialog('/', dialog);
@@ -384,7 +393,8 @@ bot.dialog('/searchGTM', [
 bot.dialog('/menu', [
     function (session) {
         session.send("Hi %s! Welcome to ISVFinder", session.userData.name);
-        session.endDialog("I can help you find ISVs or DX Contacts");
+        session.send("What kind of ISV solution are you looking for?");
+        session.endDialog("Use geography, industry, platform or ask for “help” to find out more about the search options or “start over” at any time. Eg. Manufacturing apps in Germany….");
     }
     // function (session) {
     //     var msg = new builder.Message(session)
@@ -421,16 +431,18 @@ bot.dialog('/menu', [
 ])
 
 //=============================
-//Dialog to display help
+//Dialog to handle start over
 //============================
-bot.dialog('/Help', function (session, args, next) { 
-    session.send( "Ask me.... Which Azure apps in Germany target telecommunications sector and are Co-Sell Ready?" ); 
-    session.send( "... or Who is the TE for Amazon?" ); 
-    session.send( "... or Who manages Facebook?" ); 
-    session.send( "... or Which accounts does Ian manage?" ); 
-    session.send('Number of results delivered = ' + searchLimit + " (type 'Settings' to change this)");
-    session.endDialog();
-    }); 
+bot.dialog('/startOver', [
+    function (session) {
+        initializeSearch(session);
+        session.send("Your search parameters have been cleared", session.userData.name);
+        session.send("What kind of ISV solution are you looking for?");
+        session.endDialog("Use geography, industry, platform or ask for “help” to find out more about the search options or “start over” at any time. Eg. Manufacturing apps in Germany….");
+    }
+
+])
+
 
 //=============================
 //Dialog to handle search for DX Contacts - currently not implemented TO DO
@@ -595,7 +607,7 @@ bot.dialog('/appSearchCriteria', [
             .attachments([
 
                 new builder.HeroCard(session)
-                    .subtitle("Here are the Application types I'm looking for")
+                    .subtitle("Here’s what I heard you're looking for. You can refine further by adding parameters for")
                     // .subtitle("Press Find Apps or change any search parameter")
 
                     .buttons([
@@ -1108,8 +1120,8 @@ dialog.matches('Fetch', function (session, args, next) {
 
 dialog.matches('None', function (session, args, next) { 
     // session.send( "Welcome to ISVFinder on Microsoft Bot Framework. I can help you find the right ISV for your partner." ); 
-    
-    session.replaceDialog('/menu');
+    if (!session.message.text.match(/start/i)) {session.replaceDialog('/menu')} else {session.replaceDialog('/startOver')};
+    session.endDialog();
     });
 //---------------------------------------------------------------------------------------------------    
 //handle the case where intent is happy
@@ -1143,6 +1155,9 @@ dialog.matches('Help', function (session, args, next) {
     debugMode = !debugMode;
     session.send('Number of results delivered = ' + searchLimit);
     session.send('DebugMode Enabled = ' + debugMode);
+    arrayErr.forEach(function(item) { 
+        verboseDebug(item, session);  
+    }); 
         //   session.endDialog("Session Ended");
     });  
 
@@ -1173,7 +1188,7 @@ server.get('/', function (req, res) {
         // + ApplicationIndustries.length
         ); 
     arrayErr.forEach(function(item) { 
-    // console.log( "K9 Bot = " + item);  
+    console.log( "K9 Bot = " + item);  
     }); 
     // res.send('K9 Production Bot Running');
 }); 
