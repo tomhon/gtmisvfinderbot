@@ -595,15 +595,15 @@ bot.dialog('/appSearchCriteria', [
             .attachments([
 
                 new builder.HeroCard(session)
-                    .title("Here are the Application types I'm going to look for")
-                    .subtitle("Press Find Apps or change any search parameter")
+                    .subtitle("Here are the Application types I'm looking for")
+                    // .subtitle("Press Find Apps or change any search parameter")
 
                     .buttons([
                         builder.CardAction.imBack(session, "changeGeography", "Geography: " + geographyButton),
                         builder.CardAction.imBack(session, "changePlatform", "Platform: " + platformButton),
                         builder.CardAction.imBack(session, "changeIndustry", "Industry: " + industryButton),
                         builder.CardAction.imBack(session, "changeReadiness", "Readiness: " + readinessButton),
-                        builder.CardAction.imBack(session, "searchGTM", "Find Apps")
+                        // builder.CardAction.imBack(session, "searchGTM", "Find Apps")
                     ])
      
             ]);
