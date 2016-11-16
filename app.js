@@ -285,6 +285,7 @@ function GTMQuery(session, queryString) {
         }
     else {
         verboseDebug(('GTM SQL request succeeded - rowcount' + rowCount), session);
+        session.send('rowCount' + rowCount);
         if (rowCount = 0) { 
             session.send("I couldn't find any ISV solutions. Try changing your search parameters.")};
         }
@@ -356,16 +357,6 @@ function GTMQuery(session, queryString) {
     //execute SQL request
     GTMconnection.execSql(request);
     };
-
-
-
-
-
-
-
-
-
-
 
 //=============================
 //Dialog to call GTMQuery
