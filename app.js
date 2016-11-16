@@ -1028,7 +1028,17 @@ dialog.matches('Help', function (session, args, next) {
 
 //---------------------------------------------------------------------------------------------------
 
+//---------------------------------------------------------------------------------------------------    
+//handle the case where intent is help
 
+bot.dialog('/Help', function (session, args, next) { 
+    appInsightsClient.trackEvent("Help called");  
+    session.send( "Ask me Which Azure apps in Germany target telecommunications sector?" ); 
+    session.send( "... or Who is the TE for Amazon?" ); 
+    session.send( "... or Who manages Facebook?" ); 
+    session.send( "... or Which accounts does Ian manage?" ); 
+    session.send('Number of results delivered = ' + searchLimit);
+    });  
 
 dialog.onDefault(builder.DialogAction.send("Welcome to ISVFinder on Microsoft Bot Framework. I can help you find the right ISV for your partner or find a DX contact."));
 
