@@ -140,19 +140,17 @@ var GTMconfig = {
     userName: process.env.GTMSQLuserName,
     password: process.env.GTMSQLpassword,
     server: process.env.GTMSQLserver,
-    // If you are on Microsoft Azure, you need this:
     options: {encrypt: true, database: process.env.GTMSQLdatabase}
 };
 
 var GTMconnection = new Connection(GTMconfig);
 GTMconnection.on('connect', function(err) {
     // If no error, then good to proceed.
-    
-        if (err) {
-            console.log(err);
+            if (err) {
+            verboseDebug(err);
             arrayErr.push(err.message);
         } else {
-        console.log("Connected to " + this.config.server + " " + this.config.options.database);
+        verboseDebug("Connected to " + this.config.server + " " + this.config.options.database);
 
 
 
@@ -179,6 +177,7 @@ function isvCard() {
 
 var queryString = "";
 var noResults = true;
+var resultsArray = new Array();
 
 
 //===============================================
@@ -257,28 +256,22 @@ function createQueryString(session) {
         +  "OR (Application.IsSqlServer = 'true' AND Application.IsSqlServer = '" + session.userData.platform.IsSqlServer + "')"
         +  "OR (Application.IsWindows = 'true' AND Application.IsWindows = '" + session.userData.platform.IsWindows + "')"
         + ")"
-        // if (session.userData.geography != 'Any') {queryString = queryString 
-            + " AND Country.Name LIKE '" + session.userData.geography + "'"  
-        // } ;                               
-        // if (session.userData.industry != 'Any') {queryString = queryString 
-            + " AND Application.IndustrialSectorName LIKE '" + session.userData.industry + "'"
-        // };
-        // if (session.userData.readiness != 'Any') {queryString = queryString 
-            + " AND Application.Readiness >= " + session.userData.readiness.value
-        // };
-        // queryString = queryString 
+        + " AND Country.Name LIKE '" + session.userData.geography + "'"  
+        + " AND Application.IndustrialSectorName LIKE '" + session.userData.industry + "'"
+        + " AND Application.Readiness >= " + session.userData.readiness.value
         + " AND ApplicationCountry.HasSellers = 'true'"
         + " AND Channel.Name IS NOT NULL"
         + ") ORDER BY Application.Readiness DESC";
 
-        console.log('Query =', queryString);
+        verboseDebug(('Query =', queryString), session);
 };
 //===============================================
 // Execute SQL Query, unpack results and send to bot
 //===============================================
 function GTMQuery(session, queryString) {
     //set up SQL request
-    noResults = true;   
+    noResults = true; 
+    resultsArray.length = 0;  
     request = new Request( queryString, function(err, rowCount) {
         if (err) {
         verboseDebug(err.message,session);
@@ -349,8 +342,9 @@ function GTMQuery(session, queryString) {
                     .attachments([card]);
                 }
             });
-        //post result card to bot
-        session.send(msg);
+
+        resultsArray.push(msg); //store result in resultArray
+        session.send(msg);         //post result card to bot
     }); 
 
     //execute SQL request
@@ -379,39 +373,7 @@ bot.dialog('/menu', [
         session.send("Hi %s! Welcome to ISVFinder", session.userData.name);
         session.send("What kind of ISV solution are you looking for?");
         session.endDialog("Use geography, industry, platform or ask for “help” to find out more about the search options or “start over” at any time. Eg. Manufacturing apps in Germany….");
-    }
-    // function (session) {
-    //     var msg = new builder.Message(session)
-    //         .textFormat(builder.TextFormat.xml)
-    //         .attachmentLayout(builder.AttachmentLayout.carousel)
-    //         .attachments([
-    //              new builder.HeroCard(session)
-    //                 .title("Hi %s! Welcome to ISVFinder", session.userData.name)
-    //                 .subtitle("What are you looking for?")
-
-    //                 .buttons([
-    //                     builder.CardAction.imBack(session, "appSearchCriteria", "Applications"),
-    //                     builder.CardAction.imBack(session, "dxContacts", "DX Contacts"),
-    //                     ]),
-     
-    //         ]);
-    //     builder.Prompts.text(session, msg,{maxRetries: 0});
-
-
-    // },
-    // function (session, results) {
-    //     if  (results.response && (results.response == 'appSearchCriteria' || results.response == 'dxContacts')) {
-    //         // Launch demo dialog
-    //         verboseDebug('Spotted button press',session);
-    //         session.beginDialog('/' + results.response);
-    //     } else {
-    //         // Exit the menu
-    //         verboseDebug('no button press',session);
-    //         //TO DO pass results for processing as normal client
-    //         // session.replaceDialog(results.response);
-    //         session.replaceDialog('/Help');
-    //     }
-    // }    
+    } 
 ])
 
 //=============================
@@ -1015,23 +977,11 @@ dialog.matches('Find_Both', [function (session, args, next) {
 dialog.matches('Fetch', function (session, args, next) { 
     appInsightsClient.trackEvent("Find_Fetch called");  
     session.send( "Welcome to ISVFinder on Microsoft Bot Framework. I can help you find the right ISV for your partner." ); 
-    // session.send( "Local Partner data is live = " + (partnerISV.length > 0)); 
-    //list all errors
-
-    //reload odata
-    loadApplicationsArray();
-    loadApplicationCountriesArray();
-    loadApplicationIndustriesArray();
-    loadApplicationContactsArray();
-    loadApplicationMaterialsArray();
-
     arrayErr.forEach(function(item) {
         session.send( "K9 Bot = " + item); 
     });
     session.send( "K9 data is live = " + (mappingArray.length > 0)); 
-    session.send( "isvfinderbot applications data is live = " + (Applications.length > 0)); 
-        session.send( "isvfinderbot applicationCountry data is live = " + (ApplicationCountries.length > 0)); 
-                // session.endDialog("Session Ended");
+    session.endDialog();
     });
 
 //---------------------------------------------------------------------------------------------------    
