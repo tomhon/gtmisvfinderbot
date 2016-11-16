@@ -351,6 +351,12 @@ function GTMQuery(session, queryString) {
         session.send(msg);
     }); 
 
+    request.on('done', function (rowCount, more, rows) {
+        verboseDebug('rows returned', rowCount);
+        session.send('rows returned', rowCount);
+
+     });
+
     //execute SQL request
     GTMconnection.execSql(request);
     };
