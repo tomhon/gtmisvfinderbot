@@ -285,7 +285,8 @@ function GTMQuery(session, queryString) {
         }
     else {
         verboseDebug(('GTM SQL request succeeded - rowcount' + rowCount), session);
-        session.send('GTM SQL request succeeded - rowcount' + rowCount);
+        if (rowCount = 0) { 
+            session.send("I couldn't find any ISV solutions. Try changing your search parameters.")};
         }
     });
     //unpack data from SQL query as it's returned
@@ -351,12 +352,6 @@ function GTMQuery(session, queryString) {
         //post result card to bot
         session.send(msg);
     }); 
-
-    request.on('done', function (rowCount, more, rows) {
-        verboseDebug('rows returned', rowCount);
-        session.send('rows returned', rowCount);
-
-     });
 
     //execute SQL request
     GTMconnection.execSql(request);
