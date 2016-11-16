@@ -1024,6 +1024,7 @@ dialog.matches('Help', function (session, args, next) {
     session.send( "... or Which accounts does Ian manage?" ); 
     debugMode = !debugMode;
     session.send('Number of results delivered = ' + searchLimit);
+    session.endDialog();
     });  
 
 //---------------------------------------------------------------------------------------------------
@@ -1038,6 +1039,7 @@ bot.dialog('/Help', function (session, args, next) {
     session.send( "... or Who manages Facebook?" ); 
     session.send( "... or Which accounts does Ian manage?" ); 
     session.send('Number of results delivered = ' + searchLimit);
+    session.endDialog();
     });  
 
 dialog.onDefault(builder.DialogAction.send("Welcome to ISVFinder on Microsoft Bot Framework. I can help you find the right ISV for your partner or find a DX contact."));
