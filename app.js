@@ -279,12 +279,12 @@ function createQueryString(session) {
 function GTMQuery(session, queryString) {
     //set up SQL request
     noResults = true;   
-    request = new Request( queryString, function(err) {
+    request = new Request( queryString, function(err, rowCount) {
         if (err) {
         verboseDebug(err.message,session);
         }
     else {
-        verboseDebug('GTM SQL request succeeded');
+        verboseDebug(('GTM SQL request succeeded - rowcount' + rowCount), session);
         }
     });
     //unpack data from SQL query as it's returned
