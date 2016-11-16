@@ -303,6 +303,7 @@ function GTMQuery(session, queryString) {
                         result.appId = column.value;
                         result.url = "https://msgtm.azurewebsites.net/en-US/Applications/" + result.appId + "/view"
                         verboseDebug(result.appId);
+                        appInsightsClient.trackEvent("AppId Found", result.appId);  
                         break;
                     case "ApplicationName": 
                         result.appName = column.value;
@@ -382,11 +383,11 @@ bot.dialog('/menu', [
 bot.dialog('/startOver', [
     function (session) {
         initializeSearch(session);
+        appInsightsClient.trackEvent("Start Over called");  
         session.send("Your search parameters have been cleared", session.userData.name);
         session.send("What kind of ISV solution are you looking for?");
         session.endDialog("Use geography, industry, platform or ask for “help” to find out more about the search options or “start over” at any time. Eg. Manufacturing apps in Germany….");
     }
-
 ])
 
 
