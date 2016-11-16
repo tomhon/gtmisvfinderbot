@@ -204,18 +204,10 @@ var searchLimit = 5; //restrict number of results found
 server.post('/api/messages', connector.listen());
 
 function initializeSearch(session) {
-    // if (!session.userData.geography) {
         session.userData.geography = "%"
-    // };
-    // if (!session.userData.industry) {
         session.userData.industry = "%"
-    // };
-    // if (!session.userData.platform) {
         session.userData.platform = {'name': "%", 'IsAzure': true, 'IsDynamics': true, 'IsOffice365': true, 'IsSqlServer': true, 'IsWindows': true};
-    // };
-    // if (!session.userData.readiness) {
-        session.userData.readiness = "0"
-    // };
+        session.userData.readiness = {'name': "Any", value: 0}
 }
 
 // Create LUIS recognizer that points at our model and add it as the root '/' dialog for our Cortana Bot.
@@ -289,7 +281,7 @@ function GTMQuery(session, queryString) {
     noResults = true;   
     request = new Request( queryString, function(err) {
         if (err) {
-        verboseDebug(err);
+        verboseDebug(err.message,session);
         }
     else {
         verboseDebug('GTM SQL request succeeded');
@@ -478,26 +470,18 @@ dialog.matches('Find_App', [
         verboseDebug('Find_App called',session);
 
         // Resolve and store any entities passed from LUIS.
-        initializeSearch(session);
-
-
         var geographyEntity = builder.EntityRecognizer.findEntity(args.entities, 'builtin.geography.country');
-        // var anyGeography= true; 
+
         var platformEntity = builder.EntityRecognizer.findEntity(args.entities, 'Platform');
-        // var anyPlatform = true;
+
         var industryEntity = builder.EntityRecognizer.findEntity(args.entities, 'Industry');
-        // var anyIndustry = true;
+;
         var readinessEntity = builder.EntityRecognizer.findEntity(args.entities, 'Readiness');           
-        // var anyReadiness = true;     
+    
 
         if (geographyEntity) {
             session.userData.geography = geographyEntity.entity;
             verboseDebug('Geography found '+ session.userData.geography,session);
-            // anyGeography = false;
-            // } 
-            // else {
-            //     session.userData.geography = '%';
-            //     verboseDebug('Any Geography',session)
             }
        
         if (platformEntity) {
@@ -524,10 +508,6 @@ dialog.matches('Find_App', [
                     session.userData.platform.IsWindows = true;
                     verboseDebug('IsWindows = '+ session.userData.platform.IsWindows, session);
                     }
-            // anyPlatform = false;
-            // } else {
-            //     session.userData.platform.name = '%';
-            //     verboseDebug('Any Platform',session)
             }
         
         if (industryEntity) {
@@ -542,8 +522,6 @@ dialog.matches('Find_App', [
         if (readinessEntity) {
             session.userData.readiness = {'name': readinessEntity.entity , 'value': 0};
             verboseDebug('Readiness found ' + session.userData.readiness.name, session);
-            // anyReadiness = false;
-
             if (session.userData.readiness.name == "not ready") { 
                     session.userData.readiness.value = 0;
                     verboseDebug('Readiness = '+ session.userData.readiness.value, session);
@@ -560,24 +538,10 @@ dialog.matches('Find_App', [
                     session.userData.readiness.value = 3;
                     verboseDebug('Readiness = '+ session.userData.readiness.value, session);
                     }
-
                 verboseDebug(session.userData.readiness.name, session);
-
-            // } else {
-            //     verboseDebug('Any Readiness',session)
             }
-            //  createQueryString(session);
-
-        // if (anyGeography || anyIndustry || anyPlatform || anyReadiness) {
-        //     session.replaceDialog('/appSearchCriteria')
-        // } else {
             session.replaceDialog('/searchGTM')
-        // }
-
-        
-        }
-   
-
+        } 
 ]);
 
 
@@ -586,55 +550,18 @@ dialog.matches('Find_App', [
 //============================
 
 bot.dialog('/appSearchCriteria', [ 
-
     function (session) {
-     
         verboseDebug('appSearchCriteria called',session);
-        initializeSearch(session);
-        var geographyButton = session.userData.geography;
-        if (geographyButton == '%') {geographyButton = "Any"};
-        var platformButton = session.userData.platform.name;
-        if (platformButton == '%') {platformButton = "Any"}
-        var industryButton = session.userData.industry;
-        if (industryButton == '%') {industryButton = "Any"}
-        var readinessButton = session.userData.readiness.name;
-        if (readinessButton == '%') {readinessButton = "Any"}
-
-
-        var msg = new builder.Message(session)
-            .textFormat(builder.TextFormat.xml)
-            .attachmentLayout(builder.AttachmentLayout.carousel)
-            .attachments([
-
-                new builder.HeroCard(session)
-                    .subtitle("Here’s what I heard you're looking for. You can refine further by adding parameters for")
-                    // .subtitle("Press Find Apps or change any search parameter")
-
-                    .buttons([
-                        builder.CardAction.imBack(session, "changeGeography", "Geography: " + geographyButton),
-                        builder.CardAction.imBack(session, "changePlatform", "Platform: " + platformButton),
-                        builder.CardAction.imBack(session, "changeIndustry", "Industry: " + industryButton),
-                        builder.CardAction.imBack(session, "changeReadiness", "Readiness: " + readinessButton),
-                        // builder.CardAction.imBack(session, "searchGTM", "Find Apps")
-                    ])
-     
-            ]);
-        // builder.Prompts.choice(session, msg, "changeGeography|changePlatform|changeIndustry|changeReadiness|searchGTM", {maxRetries: 0})
-        session.endDialog(msg);
-
-
-    },
-    function (session, results) {
-        if (results.response && results.response.entity != '(quit)') {
-            // Launch demo dialog
-            session.beginDialog('/' + results.response.entity);
-        } else {
-            // Exit the menu
-            session.endDialog();
+        var undefinedCriteria = "";
+        var definedCriteria = "";
+        if (session.userData.geography == '%') {undefinedCriteria = undefinedCriteria + 'Geography '} else {definedCriteria = definedCriteria + ' Geography = '+ session.userData.geography };
+        if (session.userData.platform.name == '%') {undefinedCriteria = undefinedCriteria + 'Platform '} else {definedCriteria = definedCriteria + ' Platform = '+ session.userData.platform.name};
+        if (session.userData.industry == '%') {undefinedCriteria = undefinedCriteria + 'Industry '} else {definedCriteria = definedCriteria + ' Industry = '+ session.userData.industry};
+        if (session.userData.readiness.name == 'Any') {undefinedCriteria = undefinedCriteria + 'Readiness '} else {definedCriteria = definedCriteria + ' Readiness = '+ session.userData.readiness.name};
+        if (definedCriteria !="") {session.send("Here’s what I heard:" + definedCriteria)} else {session.send("You haven't defined any search parameters")};
+        if (undefinedCriteria !="") {session.send('You can refine by adding parameters for ' + undefinedCriteria)}
+        session.endDialog();
         }
-
-    }
-
 ]);
 
 bot.dialog('/changeGeography', [
