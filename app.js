@@ -285,6 +285,7 @@ function GTMQuery(session, queryString) {
         }
     else {
         verboseDebug(('GTM SQL request succeeded - rowcount' + rowCount), session);
+        session.send('GTM SQL request succeeded - rowcount' + rowCount);
         }
     });
     //unpack data from SQL query as it's returned
