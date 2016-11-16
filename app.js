@@ -1081,11 +1081,6 @@ dialog.matches('Help', function (session, args, next) {
     session.send( "... or Which accounts does Ian manage?" ); 
     debugMode = !debugMode;
     session.send('Number of results delivered = ' + searchLimit);
-    session.send('DebugMode Enabled = ' + debugMode);
-    arrayErr.forEach(function(item) { 
-        verboseDebug(item, session);  
-    }); 
-        //   session.endDialog("Session Ended");
     });  
 
 //---------------------------------------------------------------------------------------------------
