@@ -290,7 +290,7 @@ function GTMQuery(session, queryString) {
     //unpack data from SQL query as it's returned
     request.on('row', function(columns) {
         verboseDebug('received data from SQL');
-        if (resultsArray.length > searchLimit) { return};
+        if (resultsArray.length >= searchLimit) { return};
         var msg = new builder.Message(session);
         var card = new builder.HeroCard(session)
         var result = new isvCard();
