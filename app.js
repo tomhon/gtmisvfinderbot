@@ -281,7 +281,7 @@ function GTMQuery(session, queryString) {
         if (rowCount === 0) { 
             session.send("I couldn't find any ISV solutions. Try changing your search parameters or start over.")}
             else {
-                if (rowCount > searchLimit) {
+                if (rowCount >= searchLimit) {
              session.send("I found " + rowCount + " solutions. Here are the top " + searchLimit + ". Try changing your search parameters or start over.")    
                 }           
             };
