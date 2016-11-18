@@ -278,19 +278,21 @@ function GTMQuery(session, queryString) {
         }
     else {
         verboseDebug(('GTM SQL request succeeded - rowcount' + rowCount), session);
-        if (rowCount === 0) { 
-            session.send("I couldn't find any ISV solutions. Try changing your search parameters or start over.")}
-            else {
-                if (rowCount >= searchLimit) {
-             session.send("I found " + rowCount + " solutions. Here are the top " + searchLimit + ". Try changing your search parameters or start over.")    
+        session.replaceDialog('/appSearchCriteria');
+        if (rowCount === 0) 
+            {   session.send("I couldn't find any ISV solutions. Try changing your search parameters or start over.")}
+            else 
+            {   session.send("I found " + rowCount + " solutions. Here are the top " + searchLimit + ". Try changing your search parameters or start over.");
+                resultsArray.forEach(function(item) {
+                    session.send(item);
+                    })
                 }           
             };
-        } 
-    });
+        });
     //unpack data from SQL query as it's returned
     request.on('row', function(columns) {
         verboseDebug('received data from SQL');
-        if (resultsArray.length >= searchLimit) { return};
+        if (resultsArray.length >= searchLimit) { return}; //don't bother parsing & storing more data than we need
         var msg = new builder.Message(session);
         var card = new builder.HeroCard(session)
         var result = new isvCard();
@@ -350,7 +352,7 @@ function GTMQuery(session, queryString) {
             });
 
         resultsArray.push(msg); //store result in resultArray
-        session.send(msg);         //post result card to bot
+        // session.send(msg);         //post result card to bot
     }); 
 
     //execute SQL request
@@ -366,7 +368,7 @@ bot.dialog('/searchGTM', [
         createQueryString(session); //assemble query string
         GTMQuery(session, queryString); //search db and display results        
         verboseDebug('Exiting searchGTM');
-        session.replaceDialog('/appSearchCriteria');
+        // session.replaceDialog('/appSearchCriteria');
      } 
  ]); 
 
