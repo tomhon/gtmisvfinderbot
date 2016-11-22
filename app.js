@@ -224,7 +224,7 @@ bot.dialog('/', dialog);
 //============================
 bot.dialog('/firstRun', [ 
     function (session) { 
-         builder.Prompts.text(session, "Hello... What's your name?"); 
+         builder.Prompts.text(session, "Hello... What's your name?"); //TO DO insert authentication here
      }, 
      function (session, results) { 
          // We'll save the users name and send them an initial greeting. All  
@@ -242,7 +242,7 @@ bot.dialog('/firstRun', [
 
 function createQueryString(session) {
         // queryString = "SELECT TOP " + searchLimit + " Application.ApplicationId, Application.ApplicationName, Application.AccountName, Application.IndustryName, Application.IndustrialSectorName, Application.PlatformName, Application.Readiness, Account.GtmTier, Country.Name AS CountryName, Channel.Name AS ChannelName" 
-        queryString = "SELECT Application.ApplicationId, Application.ApplicationName, Application.AccountName, Application.IndustryName, Application.IndustrialSectorName, Application.PlatformName, Application.Readiness, Account.GtmTier, Country.Name AS CountryName, Channel.Name AS ChannelName" 
+        queryString = "SELECT DISTINCT Application.ApplicationId, Application.ApplicationName, Application.AccountName, Application.IndustryName, Application.IndustrialSectorName, Application.PlatformName, Application.Readiness, Application.IsAzure, Application.IsDynamics,Application.IsOffice365,Application.IsSqlServer,Application.IsWindows ,Account.GtmTier, Country.Name AS CountryName, Channel.Name AS ChannelName" 
         + " FROM dbo.Application" 
         + " LEFT JOIN dbo.Account ON Application.AccountId=Account.AccountId"
         + " LEFT JOIN dbo.ApplicationCountry ON Application.ApplicationID=ApplicationCountry.ApplicationId"
@@ -256,13 +256,17 @@ function createQueryString(session) {
         +  "OR (Application.IsOffice365 = 'true' AND Application.IsOffice365 = '" + session.userData.platform.IsOffice365 + "')"
         +  "OR (Application.IsSqlServer = 'true' AND Application.IsSqlServer = '" + session.userData.platform.IsSqlServer + "')"
         +  "OR (Application.IsWindows = 'true' AND Application.IsWindows = '" + session.userData.platform.IsWindows + "')"
-        + ")"
-        + " AND Country.Name LIKE '" + session.userData.geography + "'"  
-        + " AND Application.IndustrialSectorName LIKE '" + session.userData.industry + "'"
+        + ")";
+        if (session.userData.geography == '%') {
+            queryString = queryString + " AND Country.Name LIKE 'united states'" 
+            } else {
+                queryString = queryString + " AND Country.Name LIKE '" + session.userData.geography + "'" 
+            };
+        queryString = queryString + " AND Application.IndustrialSectorName LIKE '%" + session.userData.industry + "%'"
         + " AND Application.Readiness >= " + session.userData.readiness.value
         + " AND ApplicationCountry.HasSellers = 'true'"
         + " AND Channel.Name IS NOT NULL"
-        + ") ORDER BY Application.Readiness DESC";
+        + ") ORDER BY Application.Readiness DESC, country.Name ASC, channel.Name ASC";
 
         verboseDebug(('Query =', queryString));
 };
@@ -296,11 +300,11 @@ function GTMQuery(session, queryString) {
         var msg = new builder.Message(session);
         var card = new builder.HeroCard(session)
         var result = new isvCard();
-        if (session.userData.platform.IsAzure) {result.platform = 'Azure'};
-        if (session.userData.platform.IsDynamics) {result.platform = 'Dynamics'};
-        if (session.userData.platform.IsOffice365) {result.platform = 'Office365'};
-        if (session.userData.platform.IsSqlServer) {result.platform = 'SQL Server'};
-        if (session.userData.platform.IsWindows) {result.platform = 'Windows'};                
+        // if (session.userData.platform.IsAzure) {result.platform = 'Azure'};
+        // if (session.userData.platform.IsDynamics) {result.platform = 'Dynamics'};
+        // if (session.userData.platform.IsOffice365) {result.platform = 'Office365'};
+        // if (session.userData.platform.IsSqlServer) {result.platform = 'SQL Server'};
+        // if (session.userData.platform.IsWindows) {result.platform = 'Windows'};                
         columns.forEach(function(column) {
             if (column.value === null) {
             // no data returned in row
@@ -327,6 +331,22 @@ function GTMQuery(session, queryString) {
                     // case "PlatformName":
                     //     result.platform = column.value;
                     //     break;
+                    case "IsWindows":
+                        {if (column.value && session.userData.platform.IsWindows) {result.platform = 'Windows'}};
+                        break;
+                    case "IsSqlServer":
+                        {if (column.value && session.userData.platform.IsSqlServer) {result.platform = 'SQL Server'}};
+                        break;
+                    case "IsOffice365":
+                        {if (column.value && session.userData.platform.IsOffice365) {result.platform = 'Office365'}};
+                        break;
+                    case "IsDynamics":
+                        {if (column.value && session.userData.platform.IsDynamics) {result.platform = 'Dynamics'}};
+                        break;
+                    case "IsAzure":
+                        {if (column.value && session.userData.platform.IsAzure) {result.platform = 'Azure'}};
+                        break;
+
                     case "CountryName":
                         result.sellCountry = column.value;
                         break;
@@ -459,7 +479,7 @@ dialog.matches('Find_App', [
                     session.userData.platform.IsDynamics = true;
                     verboseDebug('IsDynamics = '+ session.userData.platform.IsDynamics, session);
                     }
-            if (session.userData.platform.name == "office365") { 
+            if ((session.userData.platform.name == "office365") || (session.userData.platform.name == "office") ) { 
                     session.userData.platform.IsOffice365 = true;
                     verboseDebug('IsOffice365 = '+ session.userData.platform.IsOffice365, session);
                     }
@@ -728,6 +748,7 @@ dialog.matches('Settings', [
     
 ]);
 //===============================End of Find_ISV_Contact==========================
+// K9 functionality from here on
 
 
 dialog.matches('Find_TE', [
