@@ -175,7 +175,6 @@ function isvCard() {
     this.url = "";
 }
 
-var queryString = "";
 var noResults = true;
 var resultsArray = new Array();
 
@@ -237,12 +236,13 @@ bot.dialog('/firstRun', [
  ]); 
 
 //===============================================
-// Piece together the query string
+// Piece together the query string to find applications
 //==============================================
 
-function createQueryString(session) {
-        // queryString = "SELECT TOP " + searchLimit + " Application.ApplicationId, Application.ApplicationName, Application.AccountName, Application.IndustryName, Application.IndustrialSectorName, Application.PlatformName, Application.Readiness, Account.GtmTier, Country.Name AS CountryName, Channel.Name AS ChannelName" 
-        queryString = "SELECT DISTINCT Application.ApplicationId, Application.ApplicationName, Application.AccountName, Application.IndustryName, Application.IndustrialSectorName, Application.PlatformName, Application.Readiness, Application.IsAzure, Application.IsDynamics,Application.IsOffice365,Application.IsSqlServer,Application.IsWindows ,Account.GtmTier, Country.Name AS CountryName, Channel.Name AS ChannelName" 
+function createAppQueryString(session) {
+        // appQueryString = "SELECT TOP " + searchLimit + " Application.ApplicationId, Application.ApplicationName, Application.AccountName, Application.IndustryName, Application.IndustrialSectorName, Application.PlatformName, Application.Readiness, Account.GtmTier, Country.Name AS CountryName, Channel.Name AS ChannelName" 
+        var appQueryString;
+        appQueryString = "SELECT DISTINCT Application.ApplicationId, Application.ApplicationName, Application.AccountName, Application.IndustryName, Application.IndustrialSectorName, Application.PlatformName, Application.Readiness, Application.IsAzure, Application.IsDynamics,Application.IsOffice365,Application.IsSqlServer,Application.IsWindows ,Account.GtmTier, Country.Name AS CountryName, Channel.Name AS ChannelName" 
         + " FROM dbo.Application" 
         + " LEFT JOIN dbo.Account ON Application.AccountId=Account.AccountId"
         + " LEFT JOIN dbo.ApplicationCountry ON Application.ApplicationID=ApplicationCountry.ApplicationId"
@@ -258,25 +258,44 @@ function createQueryString(session) {
         +  "OR (Application.IsWindows = 'true' AND Application.IsWindows = '" + session.userData.platform.IsWindows + "')"
         + ")";
         if (session.userData.geography == '%') {
-            queryString = queryString + " AND Country.Name LIKE 'united states'" 
+            appQueryString = appQueryString + " AND Country.Name LIKE 'united states'" 
             } else {
-                queryString = queryString + " AND Country.Name LIKE '" + session.userData.geography + "'" 
+                appQueryString = appQueryString + " AND Country.Name LIKE '" + session.userData.geography + "'" 
             };
-        queryString = queryString + " AND Application.IndustrialSectorName LIKE '%" + session.userData.industry + "%'"
+        appQueryString = appQueryString + " AND Application.IndustrialSectorName LIKE '%" + session.userData.industry + "%'"
         + " AND Application.Readiness >= " + session.userData.readiness.value
         + " AND ApplicationCountry.HasSellers = 'true'"
         + " AND Channel.Name IS NOT NULL"
         + ") ORDER BY Application.Readiness DESC, country.Name ASC, channel.Name ASC";
 
-        verboseDebug(('Query =', queryString));
+        verboseDebug(('Query =', appQueryString));
+        return appQueryString;
 };
+
+
 //===============================================
-// Execute SQL Query, unpack results and send to bot
+// Piece together the query string to find Microsoft contacts for GTM ISVs
+//==============================================
+
+function createContactQueryString(session, searchISV) {
+
+        contactQueryString = "SELECT dashboard.Contact.emailaddress, dashboard.Contact.firstname, dashboard.Contact.lastname, application.AccountName, Application.ApplicationName, Application.applicationId"
+        + " from Application, dashboard.Contact"
+        + " WHERE dashboard.Contact.applicationid = Application.ApplicationId AND dashboard.Contact.ContactTypeName = 'PBE GTM' AND Application.Readiness > 0"
+        + " AND application.AccountName Like '" + searchISV + "'";
+
+        verboseDebug(('Query =', contactQueryString));
+        return contactQueryString;
+};
+
+
 //===============================================
-function GTMQuery(session, queryString) {
+// Execute GTM Appliation SQL Query, unpack results and send to bot
+//===============================================
+function GTMQuery(session, appQueryString) {
     //set up SQL request
     resultsArray.length = 0;  
-    request = new Request( queryString, function(err, rowCount) {
+    request = new Request( appQueryString, function(err, rowCount) {
         if (err) {
         verboseDebug(err.message,session);
         }
@@ -286,7 +305,12 @@ function GTMQuery(session, queryString) {
         if (rowCount === 0) 
             {   session.send("I couldn't find any ISV solutions. Try changing your search parameters or start over.")}
             else 
-            {   session.send("I found " + rowCount + " solutions. Here are the top " + searchLimit + ". Try changing your search parameters or start over.");
+            {   if (rowCount >= searchLimit ) 
+                    {
+                        session.send("I found " + rowCount + " solutions. Here are the top " + searchLimit + ". Try changing your search parameters or start over.");
+                } else {
+                        session.send("I found " + rowCount + " solution(s).");
+                }
                 resultsArray.forEach(function(item) {
                     session.send(item);
                     })
@@ -383,14 +407,88 @@ function GTMQuery(session, queryString) {
 //Dialog to call GTMQuery
 //============================
 bot.dialog('/searchGTM', [ 
-    function (session) { 
+    function (session) {
         verboseDebug('In searchGTM')
-        createQueryString(session); //assemble query string
-        GTMQuery(session, queryString); //search db and display results        
+        GTMQuery(session, createAppQueryString(session));
         verboseDebug('Exiting searchGTM');
-        // session.replaceDialog('/appSearchCriteria');
      } 
  ]); 
+
+//===============================================
+// Execute Contact SQL Query, unpack results and send to bot
+//===============================================
+function contactQuery(session, contactQueryString) {
+    //set up SQL request
+    var resultsArray = Array();
+    resultsArray.length = 0;  
+    request = new Request( contactQueryString, function(err, rowCount) {
+        if (err) {
+        verboseDebug(err.message,session);
+        }
+    else {
+        verboseDebug(('Contact SQL request succeeded - rowcount' + rowCount), session);
+        resultsArray.forEach(function(item) {
+            session.send(item);
+            })
+         };
+        });
+    //unpack data from SQL query as it's returned
+    request.on('row', function(columns) {
+        verboseDebug('received data from SQL');
+        var result = Array(); 
+        columns.forEach(function(column) {
+            if (column.value === null) {
+            // no data returned in row
+            } else {
+                switch(column.metadata.colName) {
+                    case "ApplicationId":
+                        result.AppID
+                        result.url = "https://msgtm.azurewebsites.net/en-US/Applications/" + result.appId + "/view"
+                        verboseDebug(result.appId);
+                        // appInsightsClient.trackEvent("AppId Found", result.appId);  
+                        break;
+                    case "ApplicationName": 
+                        result.appName = column.value;
+                        break;
+                    case "AccountName": 
+                        result.isvName = column.value;
+                        break;
+                    case "emailaddress":
+                        result.email = column.value;
+                        break;
+                    case "firstname":
+                        result.firstName = column.value;
+                        break;
+                    case "lastname":
+                        result.lastName = column.value;
+                        break;
+                    }  
+                 }
+            });
+        result.string = "The GTM PBE for " 
+        + result.appName 
+        + " from " + result.isvName
+        + " is " + result.firstName + " " + result.lastName + " <" + result.email +">";
+        resultsArray.push(result.string); //store result in resultArray
+    }); 
+
+    //execute SQL request
+    GTMconnection.execSql(request);
+    };
+
+
+
+//=============================
+//Dialog to call ContactQuery
+//============================
+bot.dialog('/searchContact', [ 
+    function (session) {
+        verboseDebug('In searchContact')
+        contactQuery(session, createContactQueryString(session, 'Gemalto'));
+        verboseDebug('Exiting searchContact');
+     } 
+ ]); 
+
 
 
 //=============================
@@ -643,79 +741,40 @@ bot.dialog('/changeReadiness', [
 ]);
 
 
-dialog.matches('Find_ISV_Contact', [
+dialog.matches('Find_GTM', [
     function (session, args, next) {
-        verboseDebug('Find_ISV_Contact called', session);
+        appInsightsClient.trackEvent("Find_GTM called"); 
+        verboseDebug('Find_GTM called', session);
         // Resolve and store any entities passed from LUIS.
-        var accountEntity = builder.EntityRecognizer.findEntity(args.entities, 'Account');
-        if (accountEntity) {
-            var account = accountEntity.entity;
-            // console.log('Account ' + account + ' recognized');
-            next({response: account});
+        var isvEntity = builder.EntityRecognizer.findEntity(args.entities, 'ISV');
+        if (isvEntity) {
+            var isv = isvEntity.entity;
+            next({response: isv});
             } else {
-            // Prompt for account
-            builder.Prompts.text(session, 'Which account would you like to find the TE for?');
+            // Prompt for isv
+            builder.Prompts.text(session, 'Which ISV would you like to find the GTM PBE for?');
             } 
 
         }
     ,
     function (session, results, next) {
         if (results.response) {
-            var account = results.response;
-            console.log('Account ' + account + ' now recognized')
+            var isv = results.response;
+            verboseDebug('ISV ' + isv + ' now recognized', session)
         }
-        next({response: account});
+        next({response: isv});
 
     }
     ,
     function (session, results) {
-        var searchAccount = "";
-        var account = results.response;
-        console.log('in lookup function, account = ' + account);
-        // session.send('in lookup function, account = ' + account);
-        //create regex version of the searchAccount
-        if (!account) {
-                // console.log("Sorry, I couldn't make out the name of the account you are looking for.");
-                builder.prompts.text(session, "Sorry, I couldn't make out the name of the account you are looking for.");
-        } else { 
-                (searchAccount = new RegExp(account, 'i'))
-
-        //search mapping array for searchAccount
-        var x = 0;
-        var found = false;
-                // Next line to assist with debugging
-                // // console.log("Looking for account");
-        while ( x < (mappingArray.length ) ) {
-            if (mappingArray[x]) {
-            if (mappingArray[x].title.match(searchAccount)) {
-            //post results to chat
-                // session.send('found account');
-                if(mappingArray[x].TE) {
-                    // var msg = "The TE for " + mappingArray[x] + " is " + mappingArray[x+1];
-                    // console.log( msg); 
-                    // session.send('te not null');
-                    session.send("The TE for " + mappingArray[x].title + " is " + mappingArray[x].TE);
-                    found = true;
-                    }
-                };
-            }
-            x++;
-
-            if (x > 570) {session.send('loop counter = ' + x)}
-
-            };
-            if (!found) {
-                session.send( "Sorry, I couldn't find the TE for " + account)
-                };
-
-
-            
+        var isv = results.response;
+        verboseDebug('in FIND GTM lookup function, isv = ' + isv, session);
+        contactQuery(session, createContactQueryString(session, isv));
+        session.endDialog();
         }
 
                     // next line to assist with debug
-            //   session.endDialog("Dialog Ended");
 
-    }
 ]);
 //===============================End of Find_ISV_Contact==========================
 
@@ -1019,8 +1078,9 @@ dialog.matches('Fetch', function (session, args, next) {
 
 dialog.matches('None', function (session, args, next) { 
     // session.send( "Welcome to ISVFinder on Microsoft Bot Framework. I can help you find the right ISV for your partner." ); 
-    if (!session.message.text.match(/start/i)) {session.replaceDialog('/menu')} else {session.replaceDialog('/startOver')};
-    session.endDialog();
+    if (session.message.text.match(/start/i))  {session.replaceDialog('/startOver')};
+    if (session.message.text.match(/searchContact/i))  {session.replaceDialog('/searchContact')};
+    session.replaceDialog('/menu');
     });
 //---------------------------------------------------------------------------------------------------    
 //handle the case where intent is happy
