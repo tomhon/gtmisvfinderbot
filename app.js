@@ -5,6 +5,8 @@ var server = restify.createServer();
 // var o = require('odata');
 var cache = require('memory-cache');
 var builder = require('botbuilder');
+var createQuery = require('./createQuery');
+
 
 
 var AppInsights = require('applicationinsights');
@@ -212,7 +214,12 @@ function initializeSearch(session) {
 var model = process.env.LUISServiceURL;
 var recognizer = new builder.LuisRecognizer(model);
 var dialog = new builder.IntentDialog({ recognizers: [recognizer] });
+module.exports.dialog = dialog;
+
 bot.use(builder.Middleware.firstRun({ version: 1.0, dialogId: '*:/firstRun' }));
+
+//dialog to handle search for internal GTM contact
+var findGtmDialog = require('./dialogs/findGtmDialog')
 
 
 
@@ -235,58 +242,8 @@ bot.dialog('/firstRun', [
      } 
  ]); 
 
-//===============================================
-// Piece together the query string to find applications
-//==============================================
-
-function createAppQueryString(session) {
-        // appQueryString = "SELECT TOP " + searchLimit + " Application.ApplicationId, Application.ApplicationName, Application.AccountName, Application.IndustryName, Application.IndustrialSectorName, Application.PlatformName, Application.Readiness, Account.GtmTier, Country.Name AS CountryName, Channel.Name AS ChannelName" 
-        var appQueryString;
-        appQueryString = "SELECT DISTINCT Application.ApplicationId, Application.ApplicationName, Application.AccountName, Application.IndustryName, Application.IndustrialSectorName, Application.PlatformName, Application.Readiness, Application.IsAzure, Application.IsDynamics,Application.IsOffice365,Application.IsSqlServer,Application.IsWindows ,Account.GtmTier, Country.Name AS CountryName, Channel.Name AS ChannelName" 
-        + " FROM dbo.Application" 
-        + " LEFT JOIN dbo.Account ON Application.AccountId=Account.AccountId"
-        + " LEFT JOIN dbo.ApplicationCountry ON Application.ApplicationID=ApplicationCountry.ApplicationId"
-        + " LEFT JOIN dbo.Country ON ApplicationCountry.CountryId=Country.CountryId"
-        + " LEFT JOIN dbo.ApplicationChannel ON Application.ApplicationId=ApplicationChannel.ApplicationId"
-        + " LEFT JOIN dbo.Channel ON ApplicationChannel.ChannelId=Channel.ChannelId"
-        + " WHERE ("
-        + " ("
-        +  "(Application.IsAzure = 'true' AND Application.IsAzure = '" + session.userData.platform.IsAzure + "')"
-        +  "OR (Application.IsDynamics = 'true' AND Application.IsDynamics = '" + session.userData.platform.IsDynamics + "')"
-        +  "OR (Application.IsOffice365 = 'true' AND Application.IsOffice365 = '" + session.userData.platform.IsOffice365 + "')"
-        +  "OR (Application.IsSqlServer = 'true' AND Application.IsSqlServer = '" + session.userData.platform.IsSqlServer + "')"
-        +  "OR (Application.IsWindows = 'true' AND Application.IsWindows = '" + session.userData.platform.IsWindows + "')"
-        + ")";
-        if (session.userData.geography == '%') {
-            appQueryString = appQueryString + " AND Country.Name LIKE 'united states'" 
-            } else {
-                appQueryString = appQueryString + " AND Country.Name LIKE '" + session.userData.geography + "'" 
-            };
-        appQueryString = appQueryString + " AND Application.IndustrialSectorName LIKE '%" + session.userData.industry + "%'"
-        + " AND Application.Readiness >= " + session.userData.readiness.value
-        + " AND ApplicationCountry.HasSellers = 'true'"
-        + " AND Channel.Name IS NOT NULL"
-        + ") ORDER BY Application.Readiness DESC, country.Name ASC, channel.Name ASC";
-
-        verboseDebug(('Query =', appQueryString));
-        return appQueryString;
-};
 
 
-//===============================================
-// Piece together the query string to find Microsoft contacts for GTM ISVs
-//==============================================
-
-function createContactQueryString(session, searchISV) {
-
-        contactQueryString = "SELECT dashboard.Contact.emailaddress, dashboard.Contact.firstname, dashboard.Contact.lastname, application.AccountName, Application.ApplicationName, Application.applicationId"
-        + " from Application, dashboard.Contact"
-        + " WHERE dashboard.Contact.applicationid = Application.ApplicationId AND dashboard.Contact.ContactTypeName = 'PBE GTM' AND Application.Readiness > 0"
-        + " AND application.AccountName Like '" + searchISV + "'";
-
-        verboseDebug(('Query =', contactQueryString));
-        return contactQueryString;
-};
 
 
 //===============================================
@@ -409,7 +366,7 @@ function GTMQuery(session, appQueryString) {
 bot.dialog('/searchGTM', [ 
     function (session) {
         verboseDebug('In searchGTM')
-        GTMQuery(session, createAppQueryString(session));
+        GTMQuery(session, createQuery.createAppQueryString(session));
         verboseDebug('Exiting searchGTM');
      } 
  ]); 
@@ -484,7 +441,7 @@ function contactQuery(session, contactQueryString) {
 bot.dialog('/searchContact', [ 
     function (session) {
         verboseDebug('In searchContact')
-        contactQuery(session, createContactQueryString(session, 'Gemalto'));
+        contactQuery(session, createQuery.createContactQueryString(session, 'Gemalto'));
         verboseDebug('Exiting searchContact');
      } 
  ]); 
@@ -544,27 +501,18 @@ dialog.matches(/menu/i, [
 //============================
 
 dialog.matches('Find_App', [ 
-
     function (session, args) {
-  
         verboseDebug('Find_App called',session);
         session.sendTyping();
-
         // Resolve and store any entities passed from LUIS.
         var geographyEntity = builder.EntityRecognizer.findEntity(args.entities, 'builtin.geography.country');
-
         var platformEntity = builder.EntityRecognizer.findEntity(args.entities, 'Platform');
-
         var industryEntity = builder.EntityRecognizer.findEntity(args.entities, 'Industry');
-;
         var readinessEntity = builder.EntityRecognizer.findEntity(args.entities, 'Readiness');           
-    
-
         if (geographyEntity) {
             session.userData.geography = geographyEntity.entity;
             verboseDebug('Geography found '+ session.userData.geography,session);
             }
-       
         if (platformEntity) {
         session.userData.platform = {'name': platformEntity.entity , 'IsAzure': false, 'IsDynamics': false, 'IsOffice365': false, 'IsSqlServer': false, 'IsWindows': false};
             verboseDebug('Platform found ' + session.userData.platform.name,session);
@@ -740,42 +688,6 @@ bot.dialog('/changeReadiness', [
     }
 ]);
 
-
-dialog.matches('Find_GTM', [
-    function (session, args, next) {
-        appInsightsClient.trackEvent("Find_GTM called"); 
-        verboseDebug('Find_GTM called', session);
-        // Resolve and store any entities passed from LUIS.
-        var isvEntity = builder.EntityRecognizer.findEntity(args.entities, 'ISV');
-        if (isvEntity) {
-            var isv = isvEntity.entity;
-            next({response: isv});
-            } else {
-            // Prompt for isv
-            builder.Prompts.text(session, 'Which ISV would you like to find the GTM PBE for?');
-            } 
-
-        }
-    ,
-    function (session, results, next) {
-        if (results.response) {
-            var isv = results.response;
-            verboseDebug('ISV ' + isv + ' now recognized', session)
-        }
-        next({response: isv});
-
-    }
-    ,
-    function (session, results) {
-        var isv = results.response;
-        verboseDebug('in FIND GTM lookup function, isv = ' + isv, session);
-        contactQuery(session, createContactQueryString(session, isv));
-        session.endDialog();
-        }
-
-                    // next line to assist with debug
-
-]);
 //===============================End of Find_ISV_Contact==========================
 
 dialog.matches('Settings', [
@@ -1161,3 +1073,7 @@ server.get('/', function (req, res) {
 
 
 //some comments
+
+module.exports.verboseDebug = verboseDebug;
+module.exports.appInsightsClient = appInsightsClient;
+module.exports.contactQuery = contactQuery;
